@@ -41,13 +41,13 @@ const Hero = () => {
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,hsl(24_100%_62%/0.06),transparent_70%)]" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_60%_at_100%_50%,hsl(160_84%_44%/0.04),transparent_60%)]" />
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.02)_1px,transparent_1px)] bg-size-[80px_80px] mask-[radial-gradient(ellipse_60%_60%_at_50%_0%,black_20%,transparent_100%)]" />
-      <div className="shape-1 absolute w-125 h-125 rounded-full blur-[100px] bg-primary/[.08] -top-50 left-1/2 -translate-x-1/2 pointer-events-none" />
-      <div className="shape-2 absolute w-87.5 h-87.5 rounded-full blur-[100px] bg-teal/[.06] bottom-0 -left-25 pointer-events-none" />
+      <div className="shape-1 absolute w-125 h-125 rounded-full blur-[100px] bg-primary/8 -top-50 left-1/2 -translate-x-1/2 pointer-events-none" />
+      <div className="shape-2 absolute w-87.5 h-87.5 rounded-full blur-[100px] bg-teal/6 bottom-0 -left-25 pointer-events-none" />
 
       <div className="apex-container w-full relative z-2">
         <div className="grid lg:grid-cols-[1fr_380px] gap-16 items-center">
           <div>
-            <div className="hero-tag inline-flex items-center gap-2 bg-primary/[.08] border border-primary/15 rounded-full py-1.5 px-4 pl-2.5 mb-10">
+            <div className="hero-tag inline-flex items-center gap-2 bg-primary/8 border border-primary/15 rounded-full py-1.5 px-4 pl-2.5 mb-10">
               <div className="w-5 h-5 bg-primary rounded-full grid place-items-center text-[9px] text-primary-foreground font-bold animate-pulse">✦</div>
               <span className="text-[.78rem] font-mono text-gold-light tracking-wide">2,400+ roles added this week</span>
             </div>
@@ -59,7 +59,7 @@ const Hero = () => {
             </h1>
 
             <p className="hero-sub text-[1.05rem] text-muted-foreground max-w-115 leading-[1.8] mb-10">
-              Apex connects exceptional talent with forward-thinking companies. Search curated roles, apply in minutes, land the position you deserve.
+              HireGenie connects exceptional talent with forward-thinking companies. Search curated roles, apply in minutes, land the position you deserve.
             </p>
 
             <div className="hero-actions flex items-center gap-4 flex-wrap mb-16">
@@ -102,7 +102,7 @@ const Hero = () => {
               </div>
             ))}
             {/* Decorative gradient card */}
-            <div className="relative overflow-hidden rounded-2xl p-5 border border-primary/10 bg-linear-to-br from-primary/[.08] to-transparent">
+            <div className="relative overflow-hidden rounded-2xl p-5 border border-primary/10 bg-linear-to-br from-primary/8 to-transparent">
               <div className="text-[.8rem] text-primary font-medium mb-1">+ 2,397 more roles</div>
               <div className="text-[.72rem] text-muted-foreground">Updated every hour</div>
             </div>

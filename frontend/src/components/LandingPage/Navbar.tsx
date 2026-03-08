@@ -22,12 +22,12 @@ const Navbar = () => {
       <div className="apex-container">
         <div className="flex items-center justify-between">
           <a href="/" className="flex items-center gap-2.5 font-head text-[1.4rem] font-bold text-secondary-foreground tracking-tight">
-            <div className="w-[34px] h-[34px] bg-primary rounded-lg grid place-items-center">
+            <div className="w-8.5 h-8.5 bg-primary rounded-lg grid place-items-center">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                 <path d="M9 2L16 6.5V11.5L9 16L2 11.5V6.5L9 2Z" fill="hsl(var(--ink))" />
               </svg>
             </div>
-            Apex Careers
+            HireGenie
           </a>
           <div className="hidden md:flex items-center gap-9">
             <a href="#jobs" className="text-[.88rem] font-medium text-muted-foreground hover:text-secondary-foreground transition-colors">Jobs</a>
