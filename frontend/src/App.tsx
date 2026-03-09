@@ -5,6 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import NotFound from "./pages/NotFound";
 import LandingPage from "./pages/LandingPage";
+import { ScrollTrigger } from "gsap/all";
+import gsap from "gsap";
+
+gsap.registerPlugin(ScrollTrigger);
 
 const queryClient = new QueryClient();
 

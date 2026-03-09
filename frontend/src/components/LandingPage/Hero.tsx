@@ -1,9 +1,6 @@
 import { useRef } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-
-gsap.registerPlugin(ScrollTrigger);
 
 const floatCards = [
   { emoji: "🏦", title: "Senior UX Designer", sub: "Stripe · San Francisco", badge: "New", isNew: true, bg: "#1a1f35" },
@@ -28,11 +25,11 @@ const Hero = () => {
       .from(".hero-sub", { opacity: 0, y: 30, duration: 0.8, ease: "power3.out" }, "-=.5")
       .from(".hero-actions", { opacity: 0, y: 20, duration: 0.7, ease: "power3.out" }, "-=.4")
       .from(".hero-stats > *", { opacity: 0, y: 20, duration: 0.6, ease: "power3.out", stagger: 0.08 }, "-=.3")
-      .from(".float-card", { opacity: 0, x: 80, rotation: 3, duration: 0.8, ease: "back.out(1.2)", stagger: 0.12 }, "-=.6");
+      .fromTo(".float-card", { opacity: 0, x: 80, rotation: 3, duration: 0.8, ease: "back.out(1.2)", stagger: 0.12 }, {opacity: 1, x: 0, rotation: 0}, "-=.6");
 
     // Parallax
-    gsap.to(".shape-1", { yPercent: -25, ease: "none", scrollTrigger: { trigger: "#hero", start: "top top", end: "bottom top", scrub: 1.5 } });
-    gsap.to(".shape-2", { yPercent: 20, ease: "none", scrollTrigger: { trigger: "#hero", start: "top top", end: "bottom top", scrub: 2 } });
+    gsap.to(".shape-1", { yPercent: -25, ease: "none", scrollTrigger: { trigger: sectionRef.current, start: "top top", end: "bottom top", scrub: 1.5 } });
+    gsap.to(".shape-2", { yPercent: 20, ease: "none", scrollTrigger: { trigger: sectionRef.current, start: "top top", end: "bottom top", scrub: 2 } });
   }, { scope: sectionRef });
 
   return (

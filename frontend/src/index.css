@@ -157,7 +157,7 @@
 
     .apex-section-title {
         font-family: var(--ff-head);
-        @apply text-[clamp(2.25rem_4.5vw_3.5rem)] font-normal leading-[1.08] text-white mb-5 tracking-[-0.02em];
+        @apply text-[clamp(2.25rem,4.5vw,3.5rem)] font-normal leading-[1.08] text-white mb-5 tracking-[-0.02em];
     }
 
     .apex-section-sub {

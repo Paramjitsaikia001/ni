@@ -1,9 +1,6 @@
 import { useRef } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-
-gsap.registerPlugin(ScrollTrigger);
 
 type PillType = "remote" | "full" | "hybrid" | "part";
 
@@ -29,7 +26,7 @@ const FeaturedJobs = () => {
   useGSAP(() => {
     gsap.from(".job-card", {
       opacity: 0, y: 50, duration: 0.8, stagger: 0.08, ease: "power3.out",
-      scrollTrigger: { trigger: ".jobs-grid", start: "top 85%", once: true },
+      scrollTrigger: { trigger: sectionRef.current, start: "top 85%", once: true },
     });
   }, { scope: sectionRef });
 
@@ -49,7 +46,7 @@ const FeaturedJobs = () => {
         <div className="jobs-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-14">
           {jobs.map((job, i) => (
             <div key={i} className="job-card group relative bg-surface border border-border rounded-2xl p-7 cursor-pointer transition-all duration-400 hover:border-primary/25 hover:-translate-y-1.5 hover:shadow-[0_24px_64px_rgba(0,0,0,.4)] overflow-hidden">
-              <div className="absolute inset-0 bg-linear-to-br from-primary/[.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <div className="absolute inset-0 bg-linear-to-br from-primary/4 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               <div className="relative z-1">
                 <div className="flex items-start justify-between mb-5">
                   <div className="w-12 h-12 rounded-xl grid place-items-center text-2xl ring-1 ring-border" style={{ background: job.logoBg }}>{job.logo}</div>

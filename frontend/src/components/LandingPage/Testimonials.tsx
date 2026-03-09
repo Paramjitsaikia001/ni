@@ -1,9 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-
-gsap.registerPlugin(ScrollTrigger);
 
 const testimonials = [
   { quote: "Landed my dream role at a Series B startup in 3 weeks. The quality of listings here is miles ahead of any other job board — no noise, just great opportunities.", avatar: "👩‍💻", avatarBg: "#1e293b", name: "Priya Mehta", role: "Senior Engineer · Hired at Loom" },
@@ -20,7 +17,7 @@ const Testimonials = () => {
   useGSAP(() => {
     gsap.from(".testi-card", {
       opacity: 0, y: 40, duration: 0.7, stagger: 0.12, ease: "power3.out",
-      scrollTrigger: { trigger: "#testimonials", start: "top 80%", once: true },
+      scrollTrigger: { trigger: sectionRef.current, start: "top 80%", once: true },
     });
   }, { scope: sectionRef });
 
@@ -40,21 +37,21 @@ const Testimonials = () => {
   }, [current, goTo]);
 
   return (
-    <section id="testimonials" ref={sectionRef} className="py-[120px] overflow-hidden">
+    <section id="testimonials" ref={sectionRef} className="py-30 overflow-hidden">
       <div className="apex-container">
         <div className="text-center mb-16">
           <div className="apex-tag">Success Stories</div>
           <h2 className="apex-section-title">Words from people<br />who've been here</h2>
         </div>
       </div>
-      <div className="px-8 max-w-[1300px] mx-auto overflow-hidden">
+      <div className="px-8 max-w-325 mx-auto overflow-hidden">
         <div className="relative overflow-hidden">
           <div ref={trackRef} className="flex gap-7 will-change-transform">
             {testimonials.map((t, i) => (
-              <div key={i} className="testi-card bg-surface border border-border rounded-lg p-9 min-w-[400px] max-[480px]:min-w-[90vw] shrink-0 opacity-0">
+              <div key={i} className="testi-card bg-surface border border-border rounded-lg p-9 min-w-100 max-[480px]:min-w-[90vw] shrink-0 opacity-0">
                 <div className="text-[2.5rem] text-primary leading-none mb-4 font-head">"</div>
                 <p className="text-[.95rem] text-foreground leading-[1.75] mb-7">{t.quote}</p>
-                <div className="flex items-center gap-3.5 pt-[22px] border-t border-border">
+                <div className="flex items-center gap-3.5 pt-5.5 border-t border-border">
                   <div className="w-11 h-11 rounded-full grid place-items-center text-lg shrink-0" style={{ background: t.avatarBg }}>{t.avatar}</div>
                   <div>
                     <div className="text-primary text-[.8rem] mb-0.5">★★★★★</div>
@@ -74,8 +71,8 @@ const Testimonials = () => {
           ))}
         </div>
         <div className="flex justify-center gap-3 mt-5">
-          <button onClick={() => goTo(current - 1)} className="w-[42px] h-[42px] rounded-full border border-border bg-transparent text-foreground cursor-pointer text-sm grid place-items-center transition-all hover:bg-primary hover:border-primary hover:text-primary-foreground">←</button>
-          <button onClick={() => goTo(current + 1)} className="w-[42px] h-[42px] rounded-full border border-border bg-transparent text-foreground cursor-pointer text-sm grid place-items-center transition-all hover:bg-primary hover:border-primary hover:text-primary-foreground">→</button>
+          <button onClick={() => goTo(current - 1)} className="w-10.5 h-10.5 rounded-full border border-border bg-transparent text-foreground cursor-pointer text-sm grid place-items-center transition-all hover:bg-primary hover:border-primary hover:text-primary-foreground">←</button>
+          <button onClick={() => goTo(current + 1)} className="w-10.5 h-10.5 rounded-full border border-border bg-transparent text-foreground cursor-pointer text-sm grid place-items-center transition-all hover:bg-primary hover:border-primary hover:text-primary-foreground">→</button>
         </div>
       </div>
     </section>

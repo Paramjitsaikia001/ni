@@ -1,9 +1,6 @@
 import { useRef } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-
-gsap.registerPlugin(ScrollTrigger);
 
 const columns = [
   { title: "For Job Seekers", links: ["Browse Jobs", "Companies", "Salary Explorer", "Career Advice", "Resume Builder"] },
@@ -17,7 +14,7 @@ const Footer = () => {
   useGSAP(() => {
     gsap.from(".footer-col-anim", {
       opacity: 0, y: 30, duration: 0.7, stagger: 0.1, ease: "power3.out",
-      scrollTrigger: { trigger: "#footer", start: "top 85%", once: true },
+      scrollTrigger: { trigger: footerRef.current, start: "top 85%", once: true },
     });
   }, { scope: footerRef });
 

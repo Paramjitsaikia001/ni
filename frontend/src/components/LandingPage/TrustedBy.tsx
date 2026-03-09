@@ -36,11 +36,11 @@ const TrustedBy = () => {
   }, { scope: sectionRef });
 
   return (
-    <section id="trusted" ref={sectionRef} className="py-[60px] border-t border-b border-border overflow-hidden">
+    <section id="trusted" ref={sectionRef} className="py-15 border-t border-b border-border overflow-hidden">
       <div className="text-center font-mono text-[.78rem] tracking-[.14em] uppercase text-muted-foreground mb-8">
         Trusted by world-class companies
       </div>
-      <div className="relative overflow-hidden before:absolute before:top-0 before:bottom-0 before:left-0 before:w-[120px] before:z-2 before:bg-linear-to-r before:from-background before:to-transparent after:absolute after:top-0 after:bottom-0 after:right-0 after:w-[120px] after:z-2 after:bg-linear-to-l after:from-background after:to-transparent">
+      <div className="relative overflow-hidden before:absolute before:top-0 before:bottom-0 before:left-0 before:w-30 before:z-2 before:bg-linear-to-r before:from-background before:to-transparent after:absolute after:top-0 after:bottom-0 after:right-0 after:w-30 after:z-2 after:bg-linear-to-l after:from-background after:to-transparent">
         <div ref={trackRef} className="flex gap-16 items-center w-max will-change-transform">
           {doubled.map((logo, i) => (
             <div key={i} className="flex items-center gap-2.5 opacity-45 hover:opacity-90 transition-opacity cursor-default whitespace-nowrap shrink-0">

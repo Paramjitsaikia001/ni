@@ -1,9 +1,6 @@
 import { useRef } from "react";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-
-gsap.registerPlugin(ScrollTrigger);
 
 const steps = [
   { icon: "🔍", num: "01", title: "Build Your Profile", desc: "Create a rich, verified profile in under 10 minutes. Showcase skills, past work, and salary expectations." },
