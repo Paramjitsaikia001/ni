@@ -13,11 +13,13 @@ export interface IApplication extends Document {
   candidateName: string;
   candidateEmail: string;
   resumeUrl: string;       
+  yearsOfExperience: number; // Added this
   matchScore?: number;     
   matchReasoning?: string; 
   interviewData: IQuestionAnswer[]; 
   finalScore?: number;     
-  status: 'Applied' | 'Interviewing' | 'Completed';
+  // Added 'In-Progress' and 'Abandoned' to support our exit/socket logic
+  status: 'Applied' | 'In-Progress' | 'Completed' | 'Abandoned';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,13 +38,14 @@ const ApplicationSchema: Schema = new Schema({
   candidateName: { type: String, required: true },
   candidateEmail: { type: String, required: true },
   resumeUrl: { type: String, required: true },
+  yearsOfExperience: { type: Number, default: 0 }, // Added this
   matchScore: { type: Number, default: 0 },
   matchReasoning: { type: String, default: '' },
   interviewData: { type: [QuestionAnswerSchema], default: [] },
   finalScore: { type: Number, default: 0 },
   status: { 
     type: String, 
-    enum: ['Applied', 'Interviewing', 'Completed'], 
+    enum: ['Applied', 'In-Progress', 'Completed', 'Abandoned'], 
     default: 'Applied' 
   }
 }, { timestamps: true });

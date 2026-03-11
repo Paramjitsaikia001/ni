@@ -70,3 +70,25 @@ export const createJob = async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ success: false, message: error.message || 'Server Error creating job.' });
   }
 };
+// Inside jobController.ts
+export const getJobs = async (req: Request, res: Response) => {
+  try {
+    const { search } = req.query; // e.g., /api/jobs?search=frontend
+    
+    let query = {};
+    if (search) {
+      // This looks for "frontend" inside the title or description (case-insensitive)
+      query = {
+        $or: [
+          { title: { $regex: search, $options: 'i' } },
+          { description: { $regex: search, $options: 'i' } }
+        ]
+      };
+    }
+
+    const jobs = await Job.find(query);
+    res.status(200).json({ success: true, data: jobs });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error fetching jobs' });
+  }
+};

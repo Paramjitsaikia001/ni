@@ -1,17 +1,16 @@
-import { Router } from 'express';
-// We will create the controller and middleware files right after this!
+import express from 'express';
 import { applyForJob, getApplicationDetails } from '../controllers/applicationController';
 import upload from '../middlewares/upload';
 
-const router = Router();
+const router = express.Router();
 
-// Route 1: Apply for a job
 // POST /api/applications/apply
-// The frontend will send FormData containing: jobId, candidateName, candidateEmail, and a file named 'resume'
+// Make sure 'applyForJob' matches exactly what is in your controller
 router.post('/apply', upload.single('resume'), applyForJob);
 
-// Route 2: Get application details (useful for showing the recruiter dashboard or candidate status)
 // GET /api/applications/:id
+// This is likely where line 15 is failing. 
+// Ensure 'getApplicationDetails' is imported and exists.
 router.get('/:id', getApplicationDetails);
 
 export default router;
