@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -8,6 +8,77 @@ import { Eye, EyeOff, ArrowLeft } from "lucide-react";
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+
+  // Form fields
+  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e: React.SubmitEvent) => {
+    e.preventDefault();
+    setError("");
+
+    // Basic validation
+    if (!username || !password) {
+      setError("Username and password are required.");
+      return;
+    }
+    if (isSignUp) {
+      if (!fullName || !email) {
+        setError("Full name and email are required for sign up.");
+        return;
+      }
+    }
+
+    setIsLoading(true);
+
+    const endpoint = import.meta.env.VITE_BACKEND_ENDPOINT + (isSignUp ? "/api/auth/register" : "/api/auth/login");
+    const payload = isSignUp
+      ? { username, password, email, fullName }
+      : { username, password };
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Authentication failed");
+      }
+
+      // Store token in sessionStorage
+      if (data.token) {
+        sessionStorage.setItem("token", data.token);
+      }
+
+      // Redirect to dashboard (or wherever you want)
+      navigate("/dashboard");
+    } catch (err: any) {
+      setError(err.message || "Something went wrong. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Reset form when switching mode
+  const toggleMode = () => {
+    setIsSignUp(!isSignUp);
+    setError("");
+    setFullName("");
+    setUsername("");
+    setEmail("");
+    setPassword("");
+  };
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -103,32 +174,65 @@ const Login = () => {
             </p>
           </div>
 
-          <form onSubmit={(e) => e.preventDefault()} className="space-y-5">
+          {/* Error message */}
+          {error && (
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Full name – only for sign up */}
             {isSignUp && (
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-foreground text-sm">
+                <Label htmlFor="fullName" className="text-foreground text-sm">
                   Full name
                 </Label>
                 <Input
-                  id="name"
+                  id="fullName"
                   placeholder="Jane Doe"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
                   className="h-12 bg-surface border-border placeholder:text-muted-foreground/50 focus-visible:ring-primary/40"
+                  disabled={isLoading}
                 />
               </div>
             )}
 
+            {/* Username – always visible */}
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-foreground text-sm">
-                Email
+              <Label htmlFor="username" className="text-foreground text-sm">
+                Username
               </Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="you@company.com"
+                id="username"
+                placeholder="johndoe"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className="h-12 bg-surface border-border placeholder:text-muted-foreground/50 focus-visible:ring-primary/40"
+                disabled={isLoading}
               />
             </div>
 
+            {/* Email – only for sign up */}
+            {isSignUp && (
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-foreground text-sm">
+                  Email
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="h-12 bg-surface border-border placeholder:text-muted-foreground/50 focus-visible:ring-primary/40"
+                  disabled={isLoading}
+                />
+              </div>
+            )}
+
+            {/* Password */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password" className="text-foreground text-sm">
@@ -148,12 +252,16 @@ const Login = () => {
                   id="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="h-12 bg-surface border-border placeholder:text-muted-foreground/50 pr-11 focus-visible:ring-primary/40"
+                  disabled={isLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  disabled={isLoading}
                 >
                   {showPassword ? (
                     <EyeOff className="w-4 h-4" />
@@ -166,9 +274,10 @@ const Login = () => {
 
             <Button
               type="submit"
-              className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-semibold text-sm shadow-[0_4px_24px_hsl(var(--gold)/0.35)] hover:shadow-[0_8px_32px_hsl(var(--gold)/0.5)] hover:-translate-y-0.5 transition-all duration-300"
+              disabled={isLoading}
+              className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-semibold text-sm shadow-[0_4px_24px_hsl(var(--gold)/0.35)] hover:shadow-[0_8px_32px_hsl(var(--gold)/0.5)] hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:pointer-events-none"
             >
-              {isSignUp ? "Create account" : "Sign in"}
+              {isLoading ? "Please wait..." : isSignUp ? "Create account" : "Sign in"}
             </Button>
           </form>
 
@@ -186,6 +295,7 @@ const Login = () => {
             variant="outline"
             className="w-full h-12 rounded-xl border-border text-foreground hover:border-primary/40 hover:text-primary transition-all"
             onClick={(e) => e.preventDefault()}
+            disabled={isLoading}
           >
             <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24">
               <path
@@ -213,8 +323,9 @@ const Login = () => {
             {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
             <button
               type="button"
-              onClick={() => setIsSignUp(!isSignUp)}
+              onClick={toggleMode}
               className="text-primary font-medium hover:underline underline-offset-4"
+              disabled={isLoading}
             >
               {isSignUp ? "Sign in" : "Sign up"}
             </button>
