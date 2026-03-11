@@ -7,6 +7,8 @@ import NotFound from "./pages/NotFound";
 import LandingPage from "./pages/LandingPage";
 import { ScrollTrigger } from "gsap/all";
 import gsap from "gsap";
+import LoginPage from "./pages/LoginPage";
+import JobsPage from "./pages/JobsPage";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -19,6 +21,8 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
+          <Route path="/jobs" element={<JobsPage />} />
+          <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<LandingPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
