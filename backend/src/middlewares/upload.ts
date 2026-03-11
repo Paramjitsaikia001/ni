@@ -2,7 +2,10 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 
-const uploadDir = 'uploads/';
+// This ensures the uploads folder is always in the root, 2 levels up from src/middlewares
+const uploadDir = path.join(__dirname, '../../uploads');
+
+// Create the directory if it doesn't exist
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -12,6 +15,7 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
+    // Creates a unique name: resume-1710185400000-123456789.pdf
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
@@ -19,12 +23,13 @@ const storage = multer.diskStorage({
 
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowedFileTypes = /pdf|doc|docx/;
-  const extname = allowedFileTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedFileTypes.test(file.mimetype);
+  const extName = allowedFileTypes.test(path.extname(file.originalname).toLowerCase());
+  const mimeType = allowedFileTypes.test(file.mimetype);
 
-  if (extname && mimetype) {
+  if (extName && mimeType) {
     cb(null, true);
   } else {
+    // Custom error that your applicationController can catch
     cb(new Error('Invalid file type. Only PDF, DOC, and DOCX are allowed!'));
   }
 };
@@ -32,7 +37,7 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit to prevent server overload
+    fileSize: 5 * 1024 * 1024, // 5MB limit
   },
   fileFilter: fileFilter
 });

@@ -6,19 +6,19 @@ export interface IUser extends Document {
   email: string;
   fullName: string;
   phone?: string;
-  yearOfExperience: number;
+  yearOfExperience?: number; // Made optional in Interface
   resumeUrl?: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
 const UserSchema: Schema = new Schema({
-  username: { type: String, required: true, unique: true },
+  username: { type: String, required: true, unique: true, trim: true },
   password: { type: String, required: true }, 
-  email: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true, lowercase: true },
   fullName: { type: String, required: true },
   phone: { type: String, required: false },
-  yearOfExperience: { type: Number, required: true, default: 0 },
+  yearOfExperience: { type: Number, default: 0 }, 
   resumeUrl: { type: String, required: false }
 }, { timestamps: true });
 
