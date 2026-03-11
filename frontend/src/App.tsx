@@ -8,7 +8,8 @@ import LandingPage from "./pages/LandingPage";
 import { ScrollTrigger } from "gsap/all";
 import gsap from "gsap";
 import LoginPage from "./pages/LoginPage";
-import JobsPage from "./pages/JobsPage";
+import JobsPage, { JobDetail } from "./pages/JobsPage";
+import CreateJob from "./pages/CreateJobsPage";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -21,7 +22,10 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/jobs" element={<JobsPage />} />
+          <Route path="/jobs/create" element={<CreateJob />} />
+          <Route path="/jobs" element={<JobsPage />} >
+            <Route path=":id" element={<JobDetail />} />
+          </Route>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<LandingPage />} />
           <Route path="*" element={<NotFound />} />
