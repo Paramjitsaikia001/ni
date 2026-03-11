@@ -5,40 +5,39 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 
-import connectDB from './config/db';
+dotenv.config({ path: path.resolve(__dirname, '../../.env') }); 
 
+import connectDB from './config/db';
 import applicationRoutes from './routes/applicationRoutes';
 import authRoutes from './routes/authRoutes';
 import jobRoutes from './routes/jobRoutes';
 import interviewRoutes from './routes/interviewRoutes';
-
 import { setupInterviewSocket } from './sockets/interviewSocket';
-
-dotenv.config();
 
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
 
-
 app.use(cors()); 
 app.use(express.json());
-
+app.use(express.urlencoded({ extended: true })); 
 
 connectDB();
 
+app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
 
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.use('/api/auth', authRoutes);         
 app.use('/api/jobs', jobRoutes);         
 app.use('/api/applications', applicationRoutes); 
-app.use('/api/interview', interviewRoutes); 
+app.use('/api/interviews', interviewRoutes); 
 
 
 app.get('/api/health', (req: Request, res: Response) => {
   res.status(200).json({ 
     success: true, 
-    message: 'HireGine Backend is officially production-ready!' 
+    status: 'up',
+    database: 'connected', 
+    message: 'HireGine Backend is live!' 
   });
 });
 
@@ -57,6 +56,6 @@ server.listen(PORT, () => {
   🚀 Server is running on http://localhost:${PORT}
   📁 Resumes: http://localhost:${PORT}/uploads
   📡 WebSockets: Enabled
-  🧠 AI Pipeline: Gemini 1.5 Flash Active
+  🧠 AI Pipeline: Gemini Active
   `);
 });
