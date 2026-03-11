@@ -26,21 +26,21 @@ export interface CreateJobPayload {
   expiresAt: string;
 }
 export async function fetchJobs(): Promise<Job[]> {
-  const res = await fetch(`${API_BASE}/jobs`, {
+  const res = await fetch(`${API_BASE}/api/jobs`, {
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error("Failed to fetch jobs");
   return res.json();
 }
 export async function fetchJob(id: string): Promise<Job> {
-  const res = await fetch(`${API_BASE}/jobs/${id}`, {
+  const res = await fetch(`${API_BASE}/api/jobs/${id}`, {
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error("Failed to fetch job");
   return res.json();
 }
 export async function createJob(data: CreateJobPayload): Promise<Job> {
-  const res = await fetch(`${API_BASE}/jobs`, {
+  const res = await fetch(`${API_BASE}/api/jobs`, {
     method: "POST",
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
