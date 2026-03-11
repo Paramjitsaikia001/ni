@@ -48,7 +48,7 @@ const Testimonials = () => {
         <div className="relative overflow-hidden">
           <div ref={trackRef} className="flex gap-7 will-change-transform">
             {testimonials.map((t, i) => (
-              <div key={i} className="testi-card bg-surface border border-border rounded-lg p-9 min-w-100 max-[480px]:min-w-[90vw] shrink-0 opacity-0">
+              <div key={i} className="testi-card bg-surface border border-border rounded-lg p-9 min-w-100 max-[480px]:min-w-[90vw] shrink-0 opacity-100">
                 <div className="text-[2.5rem] text-primary leading-none mb-4 font-head">"</div>
                 <p className="text-[.95rem] text-foreground leading-[1.75] mb-7">{t.quote}</p>
                 <div className="flex items-center gap-3.5 pt-5.5 border-t border-border">
