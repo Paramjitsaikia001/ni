@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import Application from "../models/Application";
+import {Application} from "../models/Application";
 import Job from "../models/Job";
 import User from "../models/User";
 import { parseResume, cleanText } from "../services/parser";

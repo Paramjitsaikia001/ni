@@ -17,7 +17,7 @@ import { setupInterviewSocket } from './src/sockets/interviewSocket';
 dotenv.config();
 
 const app: Application = express();
-const PORT = 3000;
+const PORT = 30000;
 
 
 app.use(cors()); 
@@ -46,7 +46,8 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: "*", 
-    methods: ["GET", "POST"]
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 

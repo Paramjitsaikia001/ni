@@ -7,15 +7,26 @@ export async function parseResumeChain(resume:String){
     const result = await genmodel.invoke(prompt);
     
     try {
-        const cleaned = (result.content as string)
-            .replace(/```json/g, "")
+        const rawContent = result.content as string;
+        const cleaned = rawContent
+            .replace(/```(json)?/gi, "")
             .replace(/```/g, "")
             .trim();
-        const parsed = JSON.parse(cleaned);
+        
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
+
+        if (firstBrace === -1 || lastBrace === -1) {
+            throw new Error("AI response did not contain a valid JSON object");
+        }
+
+        const jsonString = cleaned.substring(firstBrace, lastBrace + 1);
+        const parsed = JSON.parse(jsonString);
 
         return parsed;
 
     } catch (error) {
+        console.error("Resume Parse Error:", error);
         throw new Error("Invalid JSON resume response return from AI")
     }
 }

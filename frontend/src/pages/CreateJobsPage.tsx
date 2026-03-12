@@ -95,7 +95,7 @@ export default function CreateJob() {
   }
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
+      <Navbar isLoggedIn={true}/>
       <main className="pt-28 pb-20">
         <div className="apex-container max-w-2xl">
           <button

@@ -14,23 +14,25 @@ export async function parseJobDescription(jobDescription: string) {
     
     try {
         const cleaned = rawContent
-        .replace(/```json/g, "")
+        .replace(/```(json)?/gi, "")
         .replace(/```/g, "")
         .trim();
 
-        // Try to extract JSON object even if extra text exists
-        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
 
-        if (!jsonMatch) {
+        if (firstBrace === -1 || lastBrace === -1) {
             throw new Error("AI response did not contain a valid JSON object");
         }
 
-        const parsed = JSON.parse(jsonMatch[0]);
-        console.log(parsed)
+        const jsonString = cleaned.substring(firstBrace, lastBrace + 1);
+        const parsed = JSON.parse(jsonString);
+        console.log("Parsed Job Description:", parsed)
 
         return parsed;
 
     } catch (error) {
+        console.error("JD Parse Error:", error);
         throw new Error("Invalid JSON job description returned from AI")
     }
 }

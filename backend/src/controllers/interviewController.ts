@@ -13,7 +13,8 @@ import { startInterview as startTextInterview, processTextAnswer } from '../../a
 
 export const startInterview = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { applicationId } = req.body;
+    // applicationId may be sent in body or params
+    const applicationId = req.body.applicationId || req.params.applicationId;
 
     const application = await Application.findById(applicationId).populate('jobId');
     if (!application || !application.jobId) {
@@ -51,13 +52,23 @@ console.log("job des ",jobdetails.description);
     const parsedResume = await parseResume(application.resumeUrl as string);
 
     // generate the questions using Gemini
+    const resumeString = JSON.stringify(parsedResume, null, 2);
+    const jobDescString = JSON.stringify(parsedJobDescription, null, 2);
+
     const questionsRaw = await generateQuestion(
       candidateDetails.fullName,
       candidateDetails.yearOfExperience,
-      parsedResume,
-      parsedJobDescription
+      resumeString,
+      jobDescString
     );
-console.log(parsedJobDescription,parsedResume,questionsRaw);
+
+    console.log("\n==================== PARSED RESUME ====================");
+    console.log(resumeString);
+    console.log("\n==================== PARSED JOB DESC ====================");
+    console.log(jobDescString);
+    console.log("\n==================== GENERATED QUESTIONS ====================");
+    console.log(JSON.stringify(questionsRaw, null, 2));
+    console.log("=========================================================\n");
 
     // Normalise questions into a simple string array
     const questions: string[] = Array.isArray(questionsRaw)

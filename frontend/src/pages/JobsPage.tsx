@@ -110,11 +110,14 @@ export function JobDetail() {
     queryFn: () => fetchJob(id!),
     enabled: !!id,
   });
+
+  // fetchJob already returns the job object directly
+
   return (
     <Sheet open onOpenChange={() => navigate("/jobs")}>
       <SheetContent
         side="right"
-        className="w-full sm:max-w-130 bg-card border-border overflow-y-auto"
+        className="w-full z-100 sm:max-w-130 bg-card border-border overflow-y-auto"
       >
         <SheetHeader className="mb-6">
           <SheetTitle className="text-secondary-foreground font-body">
@@ -181,6 +184,15 @@ export function JobDetail() {
                 Posted {timeAgo(job.createdAt)}
               </p>
             </div>
+
+            <div>
+              <a
+                href={`/apply/${job._id}`}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-[.82rem] font-semibold shadow-[0_4px_20px_hsl(var(--gold)/0.35)] hover:-translate-y-0.5 transition-transform"
+              >
+                Apply Now
+              </a>
+            </div>
           </div>
         )}
       </SheetContent>
@@ -189,17 +201,17 @@ export function JobDetail() {
 }
 /* ─── Main Jobs Page ─── */
 export default function Jobs() {
-  const {
-    data: jobs,
-    isLoading,
-    error,
-  } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["jobs"],
     queryFn: fetchJobs,
   });
+
+  // fetchJobs returns an array of Job directly, not wrapped in a data property
+  const jobs: Job[] = data ?? [];
+
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
+      <Navbar isLoggedIn={true}/>
       <main className="pt-28 pb-20">
         <div className="apex-container">
           {/* Header */}
@@ -218,26 +230,27 @@ export default function Jobs() {
               </Button>
             </Link>
           </div>
-          
-          {isLoading && (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="rounded-xl border border-border bg-card p-5 space-y-3"
-                >
-                  <Skeleton className="h-5 w-3/4" />
-                  <Skeleton className="h-4 w-1/2" />
-                  <Skeleton className="h-16 w-full" />
-                  <div className="flex gap-2">
-                    <Skeleton className="h-5 w-16 rounded-full" />
-                    <Skeleton className="h-5 w-16 rounded-full" />
+
+          {isLoading &&
+            ((
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="rounded-xl border border-border bg-card p-5 space-y-3"
+                  >
+                    <Skeleton className="h-5 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-16 w-full" />
+                    <div className="flex gap-2">
+                      <Skeleton className="h-5 w-16 rounded-full" />
+                      <Skeleton className="h-5 w-16 rounded-full" />
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) as ReactNode}
-          
+                ))}
+              </div>
+            ) as ReactNode)}
+
           {error && (
             <div className="text-center py-20">
               <p className="text-destructive mb-2">Failed to load jobs</p>
@@ -246,7 +259,7 @@ export default function Jobs() {
               </p>
             </div>
           )}
-          
+
           {jobs && jobs.length === 0 && (
             <div className="text-center py-20">
               <Briefcase className="w-12 h-12 text-muted-foreground mx-auto mb-4" />

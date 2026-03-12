@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-const Navbar = () => {
+const Navbar = ({isLoggedIn}: {isLoggedIn?: boolean}) => {
   const [solid, setSolid] = useState(false);
   const navRef = useRef<HTMLElement>(null);
 
@@ -13,7 +13,7 @@ const Navbar = () => {
   return (
     <nav
       ref={navRef}
-      className={`fixed top-0 left-0 right-0 z-1000 transition-all duration-400 ${
+      className={`fixed top-0 left-0 right-0 z-11 transition-all duration-400 ${
         solid
           ? "bg-ink/92 backdrop-blur-md py-3.5 shadow-[0_1px_0_hsl(var(--border))]"
           : "py-5"
@@ -35,7 +35,7 @@ const Navbar = () => {
             <a href="#testimonials" className="text-[.88rem] font-medium text-muted-foreground hover:text-secondary-foreground transition-colors">Stories</a>
           </div>
           <div className="flex items-center gap-3.5">
-            <a href="/login" className="text-[.88rem] font-medium text-foreground hover:text-primary transition-colors hidden sm:block">Login</a>
+            <a href="/login" className={`text-[.88rem] font-medium text-foreground hover:text-primary transition-colors hidden ${isLoggedIn ? "sm:hidden" : "sm:block"}`}>Login</a>
             <a href="/jobs/create" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-[.82rem] font-semibold shadow-[0_4px_20px_hsl(var(--gold)/0.35)] hover:-translate-y-0.5 transition-transform">
               Post a Job
             </a>

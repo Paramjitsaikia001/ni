@@ -9,7 +9,7 @@ import Footer from '../components/LandingPage/Footer'
 const LandingPage = () => {
   return (
     <>
-    <Navbar />
+    <Navbar isLoggedIn={false}/>
     <Hero />
     <TrustedBy />
     <FeaturedJobs />
