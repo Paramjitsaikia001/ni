@@ -1,7 +1,7 @@
 import { useState, useRef, type ChangeEvent, type DragEvent } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { fetchJob } from "../lib/api";
+import { fetchJob, applyToJob } from "../lib/api";
 import Navbar from "../components/LandingPage/Navbar";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
@@ -17,9 +17,8 @@ import {
   User,
   Mail,
   BarChart2,
+  Sparkles,
 } from "lucide-react";
-
-const BACKEND = import.meta.env.VITE_BACKEND_URL ?? "";
 
 /* ─── Types ─── */
 interface FormState {
@@ -50,10 +49,10 @@ function Field({
       </label>
       {children}
       {error && (
-        <p className="flex items-center gap-1.5 text-[11px] text-destructive">
+        <div className="flex items-center gap-1.5 text-[11px] text-destructive">
           <AlertCircle className="w-3 h-3" />
           {error}
-        </p>
+        </div>
       )}
     </div>
   );
@@ -166,55 +165,46 @@ function ResumeDropzone({
         className="hidden"
         onChange={handleChange}
       />
-
-      {/* Icon */}
       <div
         className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
-          dragging
-            ? "bg-primary/20 scale-110"
-            : "bg-secondary group-hover:bg-primary/10"
+          dragging ? "bg-primary/20 scale-110" : "bg-secondary group-hover:bg-primary/10"
         }`}
       >
         <Upload
           className={`w-5 h-5 transition-colors ${dragging ? "text-primary" : "text-muted-foreground group-hover:text-primary"}`}
         />
       </div>
-
       <div className="text-center">
-        <p
-          className={`text-sm font-medium transition-colors ${dragging ? "text-primary" : "text-secondary-foreground"}`}
-        >
+        <p className={`text-sm font-medium transition-colors ${dragging ? "text-primary" : "text-secondary-foreground"}`}>
           {dragging ? "Drop your PDF here" : "Drop resume or click to browse"}
         </p>
-        <p className="text-[11px] text-muted-foreground mt-0.5">
-          PDF only · Max 10 MB
-        </p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">PDF only · Max 10 MB</p>
       </div>
     </div>
   );
 }
 
-/* ─── Success screen ─── */
+/* ─── Success screen with Interview Button ─── */
 function SuccessScreen({
   jobTitle,
   onBack,
+  applicationId,
 }: {
   jobTitle: string;
   onBack: () => void;
+  applicationId: string | null;
 }) {
   return (
     <div
       className="flex flex-col items-center justify-center py-20 text-center"
       style={{ animation: "fadeSlideUp 0.4s ease both" }}
     >
-      {/* Ring */}
       <div className="relative w-20 h-20 mb-6">
         <span className="absolute inset-0 rounded-full border-2 border-primary/20 animate-[ping_1.6s_ease-out_infinite]" />
         <div
           className="w-20 h-20 rounded-full flex items-center justify-center"
           style={{
-            background:
-              "radial-gradient(135deg, hsl(var(--gold)/0.3) 0%, hsl(var(--primary)/0.15) 100%)",
+            background: "radial-gradient(135deg, hsl(var(--gold)/0.3) 0%, hsl(var(--primary)/0.15) 100%)",
             border: "1px solid hsl(var(--gold)/0.4)",
             boxShadow: "0 0 40px hsl(var(--gold)/0.2)",
           }}
@@ -227,16 +217,20 @@ function SuccessScreen({
       <h2 className="font-body text-2xl font-semibold text-secondary-foreground mb-2">
         You're in the running!
       </h2>
-      <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
-        Your application for{" "}
-        <span className="text-secondary-foreground font-medium">
-          {jobTitle}
-        </span>{" "}
-        has been received. We'll be in touch soon.
-      </p>
+      <div className="text-sm text-muted-foreground max-w-xs leading-relaxed mb-8">
+        Your application for <span className="text-secondary-foreground font-medium">{jobTitle}</span> has been received.
+      </div>
 
-      <div className="flex gap-3 mt-8">
-        <Button variant="outline" onClick={onBack} className="gap-2">
+      <div className="flex flex-col gap-3 w-full max-w-xs">
+        {applicationId && (
+          <Link to={`/interview/${applicationId}`} className="w-full">
+            <Button className="w-full gap-2 bg-primary shadow-[0_4px_20px_hsl(var(--gold)/0.3)] hover:scale-[1.02] transition-transform">
+              <Sparkles className="w-4 h-4" />
+              Start AI Interview
+            </Button>
+          </Link>
+        )}
+        <Button variant="outline" onClick={onBack} className="w-full gap-2">
           <ArrowLeft className="w-4 h-4" />
           Browse More Jobs
         </Button>
@@ -245,21 +239,18 @@ function SuccessScreen({
   );
 }
 
-/* ════════════════════════════════════════
-   Main Apply Page
-════════════════════════════════════════ */
+/* ─── Main Apply Page ─── */
 export default function Apply() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  let { data: job, isLoading: jobLoading } = useQuery({
+  const { data: job, isLoading: jobLoading } = useQuery({
     queryKey: ["job", id],
     queryFn: () => fetchJob(id!),
     enabled: !!id,
   });
 
-  // @ts-ignore
-  job = job?.data;
+  const jobData = (job as any)?.data || job;
 
   const [form, setForm] = useState<FormState>({
     candidateName: "",
@@ -267,9 +258,8 @@ export default function Apply() {
     yearsOfExperience: "",
   });
   const [resume, setResume] = useState<File | null>(null);
-  const [errors, setErrors] = useState<Partial<FormState & { resume: string }>>(
-    {},
-  );
+  const [appId, setAppId] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Partial<FormState & { resume: string }>>({});
   const [status, setStatus] = useState<SubmitStatus>("idle");
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -280,292 +270,117 @@ export default function Apply() {
 
   function validate(): boolean {
     const next: typeof errors = {};
-    if (!form.candidateName.trim())
-      next.candidateName = "Full name is required.";
-    if (!form.candidateEmail.trim())
-      next.candidateEmail = "Email address is required.";
+    if (!form.candidateName.trim()) next.candidateName = "Full name is required.";
+    if (!form.candidateEmail.trim()) next.candidateEmail = "Email address is required.";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.candidateEmail))
       next.candidateEmail = "Enter a valid email address.";
-    if (!form.yearsOfExperience)
-      next.yearsOfExperience = "Years of experience is required.";
-    else if (
-      isNaN(Number(form.yearsOfExperience)) ||
-      Number(form.yearsOfExperience) < 0
-    )
-      next.yearsOfExperience = "Enter a valid number.";
+    if (!form.yearsOfExperience) next.yearsOfExperience = "Years of experience is required.";
     if (!resume) next.resume = "Please attach your resume (PDF).";
     setErrors(next);
     return Object.keys(next).length === 0;
   }
 
   async function handleSubmit() {
-    if (!validate()) return;
+    if (!validate() || !id) return;
     setStatus("loading");
     setServerError(null);
 
     try {
       const body = new FormData();
-      body.append("jobId", id!);
       body.append("candidateName", form.candidateName.trim());
       body.append("candidateEmail", form.candidateEmail.trim());
       body.append("yearsOfExperience", form.yearsOfExperience);
-      body.append("resume", resume!, "resume.pdf");
+      body.append("resume", resume!);
 
-      const res = await fetch(`${BACKEND}/api/applications/apply`, {
-        method: "POST",
-        body,
-      });
-
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const response = await applyToJob(id, body);
+      
+      // Capture the ID from your controller's response
+      setAppId(response.applicationId || response.data?._id);
       setStatus("success");
-    } catch {
-      setServerError("Something went wrong. Please try again.");
+    } catch (err: any) {
+      setServerError(err.message || "Something went wrong. Please try again.");
       setStatus("error");
     }
   }
 
   if (status === "success") {
     return (
-      <>
-        <style>{`@keyframes fadeSlideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}`}</style>
-        <div className="min-h-screen bg-background">
-          <Navbar />
-          <main className="pt-28 pb-20">
-            <div className="apex-container max-w-lg">
-              <SuccessScreen
-                jobTitle={job?.title ?? "this position"}
-                onBack={() => navigate("/jobs")}
-              />
-            </div>
-          </main>
-        </div>
-      </>
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <main className="pt-28 pb-20">
+          <div className="apex-container max-w-lg">
+            <SuccessScreen
+              jobTitle={jobData?.title ?? "this position"}
+              onBack={() => navigate("/jobs")}
+              applicationId={appId}
+            />
+          </div>
+        </main>
+      </div>
     );
   }
 
   return (
-    <>
-      <style>{`
-        @keyframes fadeSlideUp {
-          from { opacity: 0; transform: translateY(16px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        .field-reveal { animation: fadeSlideUp 0.4s ease both; }
-      `}</style>
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <main className="pt-28 pb-20">
+        <div className="apex-container max-w-2xl">
+          <Link
+            to={`/jobs/${id}`}
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-8 group"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
+            Back to job
+          </Link>
 
-      <div className="min-h-screen bg-background">
-        <Navbar />
+          <div className="mb-10">
+            <div className="apex-tag mb-3">Application</div>
+            <h1 className="apex-section-title">
+              {jobLoading ? <Skeleton className="h-9 w-64" /> : `Apply for ${jobData?.title}`}
+            </h1>
+          </div>
 
-        <main className="pt-28 pb-20">
-          <div className="apex-container max-w-2xl">
-            {/* Back */}
-            <Link
-              to={`/jobs/${id}`}
-              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-8 group"
-            >
-              <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
-              Back to job
-            </Link>
+          <div className="rounded-2xl border border-border bg-card overflow-hidden">
+            <div className="h-1 w-full bg-gradient-to-r from-primary via-gold to-lavender" />
+            <div className="p-8 space-y-7">
+              <Field label="Full Name" icon={<User className="w-3 h-3" />} error={errors.candidateName}>
+                <Input value={form.candidateName} onChange={(v) => set("candidateName", v)} placeholder="Jane Smith" hasError={!!errors.candidateName} />
+              </Field>
 
-            {/* Header */}
-            <div className="mb-10 field-reveal">
-              <div className="apex-tag mb-3">Application</div>
-              <h1 className="apex-section-title">
-                {jobLoading ? (
-                  <Skeleton className="h-9 w-64 inline-block" />
-                ) : (
-                  `Apply for ${job?.title}`
-                )}
-              </h1>
-              {job && (
-                <div className="flex items-center gap-2 mt-3">
-                  <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
-                    {job.companyDetails}
-                  </span>
+              <Field label="Email Address" icon={<Mail className="w-3 h-3" />} error={errors.candidateEmail}>
+                <Input value={form.candidateEmail} onChange={(v) => set("candidateEmail", v)} placeholder="jane@example.com" type="email" hasError={!!errors.candidateEmail} />
+              </Field>
+
+              <Field label="Years of Experience" icon={<BarChart2 className="w-3 h-3" />} error={errors.yearsOfExperience}>
+                <div className="relative">
+                  <Input value={form.yearsOfExperience} onChange={(v) => set("yearsOfExperience", v)} placeholder="4" type="number" hasError={!!errors.yearsOfExperience} />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">years</span>
+                </div>
+              </Field>
+
+              <Field label="Resume" icon={<FileText className="w-3 h-3" />} error={errors.resume}>
+                <ResumeDropzone file={resume} onFile={setResume} onClear={() => setResume(null)} hasError={!!errors.resume} />
+              </Field>
+
+              {serverError && (
+                <div className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/8 px-4 py-3 text-sm text-destructive">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {serverError}
                 </div>
               )}
-            </div>
 
-            {/* Card */}
-            <div
-              className="rounded-2xl border border-border bg-card overflow-hidden"
-              style={{ animation: "fadeSlideUp 0.5s ease 0.1s both" }}
-            >
-              {/* Card header stripe */}
-              <div
-                className="h-1 w-full"
-                style={{
-                  background:
-                    "linear-gradient(90deg, hsl(var(--primary)) 0%, hsl(var(--gold)) 50%, hsl(var(--lavender)) 100%)",
-                }}
-              />
-
-              <div className="p-8 space-y-7">
-                {/* Name */}
-                <div
-                  className="field-reveal"
-                  style={{ animationDelay: "0.15s" }}
-                >
-                  <Field
-                    label="Full Name"
-                    icon={<User className="w-3 h-3" />}
-                    error={errors.candidateName}
-                  >
-                    <Input
-                      value={form.candidateName}
-                      onChange={(v) => set("candidateName", v)}
-                      placeholder="Jane Smith"
-                      hasError={!!errors.candidateName}
-                    />
-                  </Field>
+              <div className="flex items-center justify-between gap-4 pt-4 border-t border-border">
+                <div className="text-[11px] text-muted-foreground max-w-[200px]">
+                  By applying you agree to our <span className="text-primary underline cursor-pointer">terms of service</span>.
                 </div>
-
-                {/* Email */}
-                <div
-                  className="field-reveal"
-                  style={{ animationDelay: "0.2s" }}
-                >
-                  <Field
-                    label="Email Address"
-                    icon={<Mail className="w-3 h-3" />}
-                    error={errors.candidateEmail}
-                  >
-                    <Input
-                      value={form.candidateEmail}
-                      onChange={(v) => set("candidateEmail", v)}
-                      placeholder="jane@example.com"
-                      type="email"
-                      hasError={!!errors.candidateEmail}
-                    />
-                  </Field>
-                </div>
-
-                {/* Years of experience */}
-                <div
-                  className="field-reveal"
-                  style={{ animationDelay: "0.25s" }}
-                >
-                  <Field
-                    label="Years of Experience"
-                    icon={<BarChart2 className="w-3 h-3" />}
-                    error={errors.yearsOfExperience}
-                  >
-                    <div className="relative">
-                      <Input
-                        value={form.yearsOfExperience}
-                        onChange={(v) => set("yearsOfExperience", v)}
-                        placeholder="4"
-                        type="number"
-                        hasError={!!errors.yearsOfExperience}
-                      />
-                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
-                        years
-                      </span>
-                    </div>
-
-                    {/* Visual scale */}
-                    {form.yearsOfExperience &&
-                      !isNaN(Number(form.yearsOfExperience)) && (
-                        <div className="flex items-center gap-2 mt-2">
-                          {(["junior", "mid", "senior", "lead"] as const).map(
-                            (lvl, i) => {
-                              const yoe = Number(form.yearsOfExperience);
-                              const active =
-                                (lvl === "junior" && yoe < 2) ||
-                                (lvl === "mid" && yoe >= 2 && yoe < 5) ||
-                                (lvl === "senior" && yoe >= 5 && yoe < 10) ||
-                                (lvl === "lead" && yoe >= 10);
-                              return (
-                                <span
-                                  key={lvl}
-                                  className={`text-[10px] font-mono px-2 py-0.5 rounded-full border transition-all duration-300 ${
-                                    active
-                                      ? [
-                                          "bg-accent/20 text-accent border-accent/30",
-                                          "bg-lavender/20 text-lavender border-lavender/30",
-                                          "bg-gold/20 text-gold border-gold/30",
-                                          "bg-primary/20 text-primary border-primary/30",
-                                        ][i]
-                                      : "bg-transparent text-muted-foreground/40 border-border/40"
-                                  }`}
-                                >
-                                  {lvl}
-                                </span>
-                              );
-                            },
-                          )}
-                        </div>
-                      )}
-                  </Field>
-                </div>
-
-                {/* Resume upload */}
-                <div
-                  className="field-reveal"
-                  style={{ animationDelay: "0.3s" }}
-                >
-                  <Field
-                    label="Resume"
-                    icon={<FileText className="w-3 h-3" />}
-                    error={errors.resume}
-                  >
-                    <ResumeDropzone
-                      file={resume}
-                      onFile={(f) => {
-                        setResume(f);
-                        setErrors((e) => ({ ...e, resume: undefined }));
-                      }}
-                      onClear={() => setResume(null)}
-                      hasError={!!errors.resume}
-                    />
-                  </Field>
-                </div>
-
-                {/* Server error */}
-                {serverError && (
-                  <div className="flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/8 px-4 py-3 text-sm text-destructive">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    {serverError}
-                  </div>
-                )}
-
-                {/* Divider */}
-                <div className="border-t border-border" />
-
-                {/* Submit */}
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-[11px] text-muted-foreground leading-relaxed max-w-50">
-                    By applying you agree to our{" "}
-                    <span className="text-primary underline underline-offset-2 cursor-pointer">
-                      terms of service
-                    </span>
-                    .
-                  </p>
-                  <Button
-                    onClick={handleSubmit}
-                    disabled={status === "loading"}
-                    size="lg"
-                    className="gap-2 shadow-[0_4px_24px_hsl(var(--gold)/0.35)] hover:-translate-y-0.5 hover:shadow-[0_8px_32px_hsl(var(--gold)/0.5)] transition-all duration-300 disabled:opacity-60 disabled:translate-y-0 disabled:shadow-none"
-                  >
-                    {status === "loading" ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Submitting…
-                      </>
-                    ) : (
-                      <>
-                        Submit Application
-                        <ArrowLeft className="w-4 h-4 rotate-180" />
-                      </>
-                    )}
-                  </Button>
-                </div>
+                <Button onClick={handleSubmit} disabled={status === "loading"} size="lg" className="gap-2 shadow-lg hover:-translate-y-0.5 transition-all">
+                  {status === "loading" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit Application"}
+                </Button>
               </div>
             </div>
           </div>
-        </main>
-      </div>
-    </>
+        </div>
+      </main>
+    </div>
   );
 }

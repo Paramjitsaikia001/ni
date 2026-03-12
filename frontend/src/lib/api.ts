@@ -1,4 +1,4 @@
-// Fixed the base URL to include /api once
+// Fixed the base URL to include /api once - pointing to backend port 5000
 const API_BASE = "http://localhost:5000/api";
 
 function getAuthHeaders(): HeadersInit {
@@ -61,13 +61,22 @@ export async function loginUser(data: any) {
 // --- Job Functions ---
 
 export async function fetchJobs(): Promise<Job[]> {
-  // FIXED: Removed the extra "/api" from the string
   const res = await fetch(`${API_BASE}/jobs`, {
     headers: getAuthHeaders(),
   });
-  if (!res.ok) throw new Error("Failed to fetch jobs");
+  
+  if (!res.ok) {
+    if (res.status === 401) throw new Error("Unauthorized: Please login again.");
+    throw new Error("Failed to fetch jobs");
+  }
+  
   const result = await res.json();
-  return result.data; 
+  console.log("Backend Response for Jobs:", result);
+
+  if (Array.isArray(result)) return result;
+  if (result.data && Array.isArray(result.data)) return result.data;
+  
+  return []; 
 }
 
 export async function fetchJob(id: string): Promise<Job> {
@@ -76,7 +85,7 @@ export async function fetchJob(id: string): Promise<Job> {
   });
   if (!res.ok) throw new Error("Failed to fetch job");
   const result = await res.json();
-  return result.data;
+  return result.data || result;
 }
 
 export async function createJob(data: CreateJobPayload): Promise<Job> {
@@ -87,5 +96,31 @@ export async function createJob(data: CreateJobPayload): Promise<Job> {
   });
   if (!res.ok) throw new Error("Failed to create job");
   const result = await res.json();
-  return result.data;
+  return result.data || result;
+}
+
+// --- Application Functions ---
+
+/**
+ * Handles Job Application Submission
+ * Note: 'data' should be an instance of FormData to handle the Resume file upload.
+ */
+export async function applyToJob(jobId: string, data: FormData) {
+  const token = localStorage.getItem("token");
+  
+  const res = await fetch(`${API_BASE}/applications/apply/${jobId}`, {
+    method: "POST",
+    headers: {
+      // IMPORTANT: We do NOT set 'Content-Type' for FormData/File uploads
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: data, 
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json();
+    throw new Error(errorData.message || "Something went wrong while applying");
+  }
+  
+  return res.json();
 }

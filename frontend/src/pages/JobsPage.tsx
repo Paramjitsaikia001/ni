@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchJobs, type Job } from "../lib/api";
-import { Link, Outlet, useParams } from "react-router-dom";
+import { fetchJobs, fetchJob, type Job } from "../lib/api";
+import { Link, Outlet, useParams, useNavigate } from "react-router-dom";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Briefcase, Clock, Plus } from "lucide-react";
@@ -12,22 +12,23 @@ import {
   SheetTitle,
   SheetDescription,
 } from "../components/ui/sheet";
-import { useNavigate } from "react-router-dom";
-import { fetchJob } from "../lib/api";
 import { Skeleton } from "../components/ui/skeleton";
 import type { ReactNode } from "react";
+
 const experienceColors: Record<string, string> = {
   junior: "bg-accent/20 text-accent border-accent/30",
   mid: "bg-lavender/20 text-lavender border-lavender/30",
   senior: "bg-gold/20 text-gold border-gold/30",
   lead: "bg-primary/20 text-primary border-primary/30",
 };
+
 function getExpClass(level: string) {
   return (
     experienceColors[level.toLowerCase()] ??
     "bg-muted text-muted-foreground border-border"
   );
 }
+
 function timeAgo(dateStr?: string) {
   if (!dateStr) return "";
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -37,9 +38,11 @@ function timeAgo(dateStr?: string) {
   if (days < 30) return `${days} days ago`;
   return `${Math.floor(days / 30)}mo ago`;
 }
+
 function isExpired(dateStr: string) {
   return new Date(dateStr).getTime() < Date.now();
 }
+
 /* ─── Job Card ─── */
 function JobCard({ job }: { job: Job }) {
   return (
@@ -97,11 +100,12 @@ function JobCard({ job }: { job: Job }) {
     </Link>
   );
 }
+
 /* ─── Job Detail Panel ─── */
 export function JobDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  let {
+  const {
     data: job,
     isLoading,
     error,
@@ -110,9 +114,6 @@ export function JobDetail() {
     queryFn: () => fetchJob(id!),
     enabled: !!id,
   });
-
-  // @ts-ignore
-  job = job?.data;
 
   return (
     <Sheet open onOpenChange={() => navigate("/jobs")}>
@@ -139,7 +140,6 @@ export function JobDetail() {
         )}
         {job && (
           <div className="space-y-6">
-            {/* Experience & Expiry */}
             <div className="flex flex-wrap gap-3">
               <span
                 className={`px-3 py-1 rounded-full border text-xs font-medium ${getExpClass(job.experienceLevel)}`}
@@ -154,7 +154,6 @@ export function JobDetail() {
                   : `Expires ${new Date(job.expiresAt).toLocaleDateString()}`}
               </span>
             </div>
-            {/* Description */}
             <div>
               <h4 className="font-mono text-[10px] tracking-widest uppercase text-primary mb-2">
                 Description
@@ -163,7 +162,6 @@ export function JobDetail() {
                 {job.description}
               </p>
             </div>
-            {/* Skills */}
             <div>
               <h4 className="font-mono text-[10px] tracking-widest uppercase text-primary mb-2">
                 Skills
@@ -179,17 +177,18 @@ export function JobDetail() {
                 ))}
               </div>
             </div>
-            {/* Posted */}
             <div className="pt-4 border-t border-border">
               <p className="text-xs text-muted-foreground">
                 Posted {timeAgo(job.createdAt)}
               </p>
             </div>
-
             <div>
-              <a href={`/apply/${job._id}`} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-[.82rem] font-semibold shadow-[0_4px_20px_hsl(var(--gold)/0.35)] hover:-translate-y-0.5 transition-transform">
-                  Apply Now
-              </a>
+              <Link
+                to={`/apply/${job._id}`}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-[.82rem] font-semibold shadow-[0_4px_20px_hsl(var(--gold)/0.35)] hover:-translate-y-0.5 transition-transform"
+              >
+                Apply Now
+              </Link>
             </div>
           </div>
         )}
@@ -197,9 +196,10 @@ export function JobDetail() {
     </Sheet>
   );
 }
+
 /* ─── Main Jobs Page ─── */
 export default function Jobs() {
-  let {
+  const {
     data: jobs,
     isLoading,
     error,
@@ -208,15 +208,11 @@ export default function Jobs() {
     queryFn: fetchJobs,
   });
 
-  // @ts-ignore
-  jobs = jobs?.data;
-
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="pt-28 pb-20">
         <div className="apex-container">
-          {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
             <div>
               <div className="apex-tag">Open Positions</div>
@@ -233,25 +229,24 @@ export default function Jobs() {
             </Link>
           </div>
 
-          {isLoading &&
-            ((
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="rounded-xl border border-border bg-card p-5 space-y-3"
-                  >
-                    <Skeleton className="h-5 w-3/4" />
-                    <Skeleton className="h-4 w-1/2" />
-                    <Skeleton className="h-16 w-full" />
-                    <div className="flex gap-2">
-                      <Skeleton className="h-5 w-16 rounded-full" />
-                      <Skeleton className="h-5 w-16 rounded-full" />
-                    </div>
+          {isLoading && (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl border border-border bg-card p-5 space-y-3"
+                >
+                  <Skeleton className="h-5 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-16 w-full" />
+                  <div className="flex gap-2">
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                    <Skeleton className="h-5 w-16 rounded-full" />
                   </div>
-                ))}
-              </div>
-            ) as ReactNode)}
+                </div>
+              ))}
+            </div>
+          )}
 
           {error && (
             <div className="text-center py-20">
@@ -262,7 +257,7 @@ export default function Jobs() {
             </div>
           )}
 
-          {jobs && jobs.length === 0 && (
+          {!isLoading && jobs && jobs.length === 0 && (
             <div className="text-center py-20">
               <Briefcase className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-lg text-secondary-foreground mb-2">
@@ -273,8 +268,8 @@ export default function Jobs() {
               </p>
             </div>
           )}
-          {/* Grid */}
-          {jobs && jobs.length > 0 && (
+
+          {!isLoading && jobs && jobs.length > 0 && (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {jobs.map((job) => (
                 <JobCard key={job._id} job={job} />
@@ -283,7 +278,6 @@ export default function Jobs() {
           )}
         </div>
       </main>
-      {/* Nested route for side panel */}
       <Outlet />
     </div>
   );
