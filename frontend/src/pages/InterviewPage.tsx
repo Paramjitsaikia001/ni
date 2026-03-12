@@ -1,19 +1,30 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Mic,
   MicOff,
   PhoneOff,
   Volume2,
+  VolumeX,
   Clock,
   ChevronDown,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import Navbar from "../components/LandingPage/Navbar";
 
+const BACKEND = import.meta.env.VITE_BACKEND_ENDPOINT ?? "";
+
 /* ─── Types ─── */
 type Speaker = "AI" | "User";
+type SessionPhase =
+  | "connecting"
+  | "ai-speaking"
+  | "user-recording"
+  | "processing"
+  | "ended";
 
 interface TranscriptLine {
   speaker: Speaker;
@@ -21,27 +32,38 @@ interface TranscriptLine {
   time: string;
 }
 
-interface SessionInfoRow {
-  label: string;
-  value: string;
+/* ─── Browser SpeechRecognition shim ─── */
+const SpeechRecognitionAPI =
+  (window as any).SpeechRecognition ||
+  (window as any).webkitSpeechRecognition ||
+  null;
+
+/* ─── Helpers ─── */
+function formatTime(s: number): string {
+  const m = Math.floor(s / 60)
+    .toString()
+    .padStart(2, "0");
+  const sec = (s % 60).toString().padStart(2, "0");
+  return `${m}:${sec}`;
 }
 
-/* ─── AI Orb Visualizer ─── */
-interface AIOrbProps {
-  isSpeaking: boolean;
+function elapsedLabel(startedAt: number): string {
+  return formatTime(Math.floor((Date.now() - startedAt) / 1000));
 }
 
-function AIOrb({ isSpeaking }: AIOrbProps) {
+/* ─── AI Orb ─── */
+function AIOrb({ phase }: { phase: SessionPhase }) {
+  const isSpeaking = phase === "ai-speaking";
+  const isProcessing = phase === "processing" || phase === "connecting";
+
   return (
     <div className="relative flex items-center justify-center w-36 h-36">
-      {/* Outer pulse rings */}
       {isSpeaking && (
         <>
           <span className="absolute w-36 h-36 rounded-full border border-primary/20 animate-[ping_1.4s_ease-out_infinite]" />
           <span className="absolute w-28 h-28 rounded-full border border-primary/30 animate-[ping_1.4s_ease-out_0.3s_infinite]" />
         </>
       )}
-      {/* Static ambient glow */}
       <span
         className="absolute w-32 h-32 rounded-full"
         style={{
@@ -51,22 +73,26 @@ function AIOrb({ isSpeaking }: AIOrbProps) {
           transition: "background 0.6s ease",
         }}
       />
-      {/* Core orb */}
       <div
         className="relative z-10 w-20 h-20 rounded-full flex items-center justify-center transition-all duration-500"
         style={{
           background: isSpeaking
             ? "radial-gradient(135deg, hsl(var(--gold)) 0%, hsl(var(--primary)) 60%, hsl(var(--lavender)) 100%)"
-            : "radial-gradient(135deg, hsl(var(--primary)/0.6) 0%, hsl(var(--primary)/0.2) 100%)",
+            : isProcessing
+              ? "radial-gradient(135deg, hsl(var(--lavender)/0.8) 0%, hsl(var(--primary)/0.4) 100%)"
+              : "radial-gradient(135deg, hsl(var(--primary)/0.6) 0%, hsl(var(--primary)/0.2) 100%)",
           boxShadow: isSpeaking
             ? "0 0 40px hsl(var(--gold)/0.5), 0 0 80px hsl(var(--primary)/0.2)"
             : "0 0 20px hsl(var(--primary)/0.2)",
         }}
       >
-        <Volume2 className="w-7 h-7 text-background" />
+        {isProcessing ? (
+          <Loader2 className="w-7 h-7 text-background animate-spin" />
+        ) : (
+          <Volume2 className="w-7 h-7 text-background" />
+        )}
       </div>
 
-      {/* Sound bars inside orb ring */}
       {isSpeaking && (
         <div className="absolute bottom-1 flex items-end gap-0.5">
           {([3, 5, 8, 5, 3] as number[]).map((h, i) => (
@@ -85,22 +111,25 @@ function AIOrb({ isSpeaking }: AIOrbProps) {
   );
 }
 
-/* ─── Waveform Bar ─── */
-interface WaveformProps {
+/* ─── Waveform ─── */
+function Waveform({
+  active,
+  color = "hsl(var(--primary)/0.7)",
+}: {
   active: boolean;
-}
-
-function Waveform({ active }: WaveformProps) {
+  color?: string;
+}) {
   return (
     <div className="flex items-center gap-0.75 h-8">
       {Array.from({ length: 28 }).map((_, i) => (
         <span
           key={i}
-          className="rounded-full transition-all duration-150"
+          className="rounded-full"
           style={{
             width: "3px",
-            background: "hsl(var(--primary)/0.7)",
+            background: color,
             height: active ? `${8 + Math.random() * 22}px` : "4px",
+            transition: "height 0.15s ease",
             animation: active
               ? `waveBar 0.5s ease-in-out ${(i % 7) * 0.07}s infinite alternate`
               : "none",
@@ -112,20 +141,15 @@ function Waveform({ active }: WaveformProps) {
 }
 
 /* ─── Transcript Entry ─── */
-interface TranscriptEntryProps extends TranscriptLine {
-  isLatest: boolean;
-}
-
 function TranscriptEntry({
   speaker,
   text,
   time,
   isLatest,
-}: TranscriptEntryProps) {
+}: TranscriptLine & { isLatest: boolean }) {
   const isAI = speaker === "AI";
   return (
     <div className={`flex gap-3 ${isAI ? "" : "flex-row-reverse"}`}>
-      {/* Avatar dot */}
       <div
         className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-[9px] font-mono font-bold mt-0.5 ${
           isAI
@@ -158,182 +182,414 @@ function TranscriptEntry({
   );
 }
 
-/* ─── User Camera Placeholder ─── */
-interface UserCameraProps {
+/* ─── User Video ─── */
+function UserVideo({
+  stream,
+  isMuted,
+  cameraError,
+  phase,
+}: {
+  stream: MediaStream | null;
   isMuted: boolean;
-}
+  cameraError: boolean;
+  phase: SessionPhase;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const isRecording = phase === "user-recording";
+  const hasVideo =
+    !!stream && stream.getVideoTracks().length > 0 && !cameraError;
 
-function UserCamera({ isMuted }: UserCameraProps) {
+  useEffect(() => {
+    if (videoRef.current && stream) videoRef.current.srcObject = stream;
+  }, [stream]);
+
   return (
-    <div className="relative w-full aspect-4/3 rounded-2xl overflow-hidden border border-border bg-card">
-      {/* Background pattern */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse at 50% 40%, hsl(var(--gold)/0.06) 0%, hsl(var(--background)) 70%)",
-        }}
-      />
-      <div
-        className="absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(0deg, transparent, transparent 30px, hsl(var(--border)) 30px, hsl(var(--border)) 31px), repeating-linear-gradient(90deg, transparent, transparent 30px, hsl(var(--border)) 30px, hsl(var(--border)) 31px)",
-        }}
+    <div
+      className="relative w-full aspect-4/3 rounded-2xl overflow-hidden border bg-card transition-all duration-300"
+      style={{
+        borderColor: isRecording
+          ? "hsl(var(--gold)/0.5)"
+          : "hsl(var(--border))",
+        boxShadow: isRecording ? "0 0 24px hsl(var(--gold)/0.15)" : "none",
+      }}
+    >
+      <video
+        ref={videoRef}
+        autoPlay
+        muted
+        playsInline
+        className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] transition-opacity duration-500 ${hasVideo ? "opacity-100" : "opacity-0"}`}
       />
 
-      {/* Silhouette */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-        <div
-          className="w-24 h-24 rounded-full flex items-center justify-center"
-          style={{
-            background:
-              "radial-gradient(circle, hsl(var(--gold)/0.15), hsl(var(--card)))",
-            border: "1px solid hsl(var(--gold)/0.2)",
-          }}
-        >
-          <svg viewBox="0 0 64 64" fill="none" className="w-16 h-16">
-            <circle
-              cx="32"
-              cy="22"
-              r="11"
-              fill="hsl(var(--muted-foreground)/0.3)"
-            />
-            <path
-              d="M10 56c0-12.15 9.85-22 22-22s22 9.85 22 22"
-              stroke="hsl(var(--muted-foreground)/0.3)"
-              strokeWidth="2"
-              fill="hsl(var(--muted-foreground)/0.15)"
-            />
-          </svg>
-        </div>
-        <p className="text-xs text-muted-foreground font-mono tracking-widest uppercase">
-          Camera Off
-        </p>
-      </div>
+      {!hasVideo && (
+        <>
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(ellipse at 50% 40%, hsl(var(--gold)/0.06) 0%, hsl(var(--background)) 70%)",
+            }}
+          />
+          <div
+            className="absolute inset-0 opacity-[0.03]"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(0deg,transparent,transparent 30px,hsl(var(--border)) 30px,hsl(var(--border)) 31px),repeating-linear-gradient(90deg,transparent,transparent 30px,hsl(var(--border)) 30px,hsl(var(--border)) 31px)",
+            }}
+          />
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+            <div
+              className="w-24 h-24 rounded-full flex items-center justify-center"
+              style={{
+                background:
+                  "radial-gradient(circle, hsl(var(--gold)/0.15), hsl(var(--card)))",
+                border: "1px solid hsl(var(--gold)/0.2)",
+              }}
+            >
+              <svg viewBox="0 0 64 64" fill="none" className="w-16 h-16">
+                <circle
+                  cx="32"
+                  cy="22"
+                  r="11"
+                  fill="hsl(var(--muted-foreground)/0.3)"
+                />
+                <path
+                  d="M10 56c0-12.15 9.85-22 22-22s22 9.85 22 22"
+                  stroke="hsl(var(--muted-foreground)/0.3)"
+                  strokeWidth="2"
+                  fill="hsl(var(--muted-foreground)/0.15)"
+                />
+              </svg>
+            </div>
+            <p className="text-xs text-muted-foreground font-mono tracking-widest uppercase">
+              {cameraError ? "Camera unavailable" : "Connecting…"}
+            </p>
+          </div>
+        </>
+      )}
 
-      {/* Status bar */}
+      {isRecording && (
+        <span className="absolute inset-0 rounded-2xl border-2 border-gold/40 pointer-events-none animate-[ping_1.5s_ease-out_infinite]" />
+      )}
+
       <div className="absolute bottom-0 left-0 right-0 px-4 py-3 flex items-center justify-between bg-linear-to-t from-background/80 to-transparent">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+          <span
+            className={`w-2 h-2 rounded-full ${isRecording ? "bg-gold" : "bg-accent"} animate-pulse`}
+          />
           <span className="text-[11px] text-muted-foreground font-mono">
-            You
+            {isRecording ? "Listening…" : "You"}
           </span>
         </div>
-        {isMuted && (
-          <Badge variant="destructive" className="text-[9px] h-5 px-2">
-            <MicOff className="w-2.5 h-2.5 mr-1" /> Muted
-          </Badge>
-        )}
+        <div className="flex items-center gap-1.5">
+          {isRecording && (
+            <Badge className="text-[9px] h-5 px-2 border-gold/30 bg-gold/15 text-gold">
+              <Mic className="w-2.5 h-2.5 mr-1" /> Live
+            </Badge>
+          )}
+          {isMuted && (
+            <Badge variant="destructive" className="text-[9px] h-5 px-2">
+              <MicOff className="w-2.5 h-2.5 mr-1" /> Muted
+            </Badge>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-/* ─── Mock transcript data ─── */
-const MOCK_TRANSCRIPT: TranscriptLine[] = [
-  {
-    speaker: "AI",
-    text: "Welcome! I'm your AI interviewer today. Let's start — can you tell me a bit about yourself and your background?",
-    time: "0:04",
-  },
-  {
-    speaker: "User",
-    text: "Sure! I'm a full-stack engineer with about 4 years of experience, primarily working with React, Node.js, and PostgreSQL.",
-    time: "0:18",
-  },
-  {
-    speaker: "AI",
-    text: "Great background. Can you walk me through a challenging technical problem you solved recently and how you approached it?",
-    time: "0:32",
-  },
-  {
-    speaker: "User",
-    text: "Yeah, we had a performance bottleneck in our dashboard — queries were taking 8+ seconds. I profiled the DB and added targeted indexes, bringing it down to under 200ms.",
-    time: "0:51",
-  },
-];
+/* ─── Phase label ─── */
+function phaseLabel(phase: SessionPhase): string {
+  switch (phase) {
+    case "connecting":
+      return "Connecting…";
+    case "ai-speaking":
+      return "Speaking…";
+    case "user-recording":
+      return "Listening";
+    case "processing":
+      return "Processing…";
+    case "ended":
+      return "Session ended";
+  }
+}
 
-/* ─── Main Interview Page ─── */
+/* ════════════════════════════════════════
+   Main Interview Page
+════════════════════════════════════════ */
 export default function Interview() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [isAISpeaking, setIsAISpeaking] = useState<boolean>(true);
-  const [elapsed, setElapsed] = useState<number>(0);
-  const [transcript, setTranscript] = useState<TranscriptLine[]>(
-    MOCK_TRANSCRIPT.slice(0, 2),
-  );
-  const [showEndConfirm, setShowEndConfirm] = useState<boolean>(false);
-  const transcriptRef = useRef<HTMLDivElement>(null);
+  /* media */
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [speakerMuted, setSpeakerMuted] = useState(false);
 
-  // Timer
+  /* session */
+  const [phase, setPhase] = useState<SessionPhase>("connecting");
+  const [elapsed, setElapsed] = useState(0);
+  const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
+  const [liveAnswer, setLiveAnswer] = useState(""); // interim STT text
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /* refs */
+  const transcriptRef = useRef<HTMLDivElement>(null);
+  const sessionStartRef = useRef(Date.now());
+  const recognitionRef = useRef<any>(null);
+  const speakerMutedRef = useRef(false);
+  const finalAnswerRef = useRef(""); // accumulates confirmed STT words
+
+  /* keep ref in sync */
+  useEffect(() => {
+    speakerMutedRef.current = speakerMuted;
+  }, [speakerMuted]);
+
+  /* ── timer ── */
   useEffect(() => {
     const t = setInterval(() => setElapsed((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // Simulate transcript growing
+  /* ── auto-scroll ── */
   useEffect(() => {
-    const timers = MOCK_TRANSCRIPT.slice(2).map((entry, i) =>
-      setTimeout(
-        () => {
-          setTranscript((prev) => [...prev, entry]);
-          setIsAISpeaking(entry.speaker === "AI");
-        },
-        (i + 1) * 5000,
-      ),
-    );
-    return () => timers.forEach(clearTimeout);
+    transcriptRef.current?.scrollTo({
+      top: transcriptRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [transcript, liveAnswer]);
+
+  /* ── mute mic tracks ── */
+  useEffect(() => {
+    stream?.getAudioTracks().forEach((t) => {
+      t.enabled = !isMuted;
+    });
+  }, [isMuted, stream]);
+
+  /* ── cleanup ── */
+  useEffect(() => {
+    return () => {
+      stream?.getTracks().forEach((t) => t.stop());
+      window.speechSynthesis?.cancel();
+      recognitionRef.current?.abort();
+    };
+  }, [stream]);
+
+  /* ── add a line to transcript ── */
+  const addLine = useCallback((speaker: Speaker, text: string) => {
+    setTranscript((prev) => [
+      ...prev,
+      { speaker, text, time: elapsedLabel(sessionStartRef.current) },
+    ]);
   }, []);
 
-  // Auto-scroll transcript
-  useEffect(() => {
-    if (transcriptRef.current) {
-      transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+  /* ══════════════════════════════════
+     SPEAK — AI reads text aloud
+  ══════════════════════════════════ */
+  const speak = useCallback((text: string, onDone: () => void) => {
+    if (!("speechSynthesis" in window)) {
+      onDone();
+      return;
     }
-  }, [transcript]);
 
-  const formatTime = (s: number): string => {
-    const m = Math.floor(s / 60)
-      .toString()
-      .padStart(2, "0");
-    const sec = (s % 60).toString().padStart(2, "0");
-    return `${m}:${sec}`;
-  };
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.95;
+    u.pitch = 1.0;
+    u.volume = speakerMutedRef.current ? 0 : 1;
+    u.onend = onDone;
+    u.onerror = onDone;
+    window.speechSynthesis.speak(u);
+  }, []);
 
-  const sessionRows: SessionInfoRow[] = [
-    { label: "Role", value: "Senior Frontend Engineer" },
-    { label: "Stage", value: "Technical Round" },
-    {
-      label: "Questions",
-      value: `${transcript.filter((t) => t.speaker === "AI").length} asked`,
+  /* ══════════════════════════════════
+     START USER RECORDING (STT)
+  ══════════════════════════════════ */
+  const startListening = useCallback(() => {
+    setPhase("user-recording");
+    setLiveAnswer("");
+    finalAnswerRef.current = "";
+
+    if (!SpeechRecognitionAPI) return; // user must type / use "Done" manually
+
+    const rec = new SpeechRecognitionAPI();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = "en-US";
+    recognitionRef.current = rec;
+
+    rec.onresult = (e: any) => {
+      let interim = "";
+      let final = finalAnswerRef.current;
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const chunk = e.results[i][0].transcript;
+        if (e.results[i].isFinal) final += (final ? " " : "") + chunk;
+        else interim = chunk;
+      }
+      finalAnswerRef.current = final;
+      setLiveAnswer(final + (interim ? " " + interim : ""));
+    };
+
+    rec.onerror = () => {
+      /* ignore — user can still press Done */
+    };
+    rec.start();
+  }, []);
+
+  /* ══════════════════════════════════
+     STOP & SUBMIT user's answer
+  ══════════════════════════════════ */
+  const submitAnswer = useCallback(async () => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+
+    const answer = finalAnswerRef.current.trim() || liveAnswer.trim();
+    if (!answer) return; // nothing to submit
+
+    setLiveAnswer("");
+    addLine("User", answer);
+    setPhase("processing");
+
+    try {
+      const res = await fetch(`${BACKEND}/api/interview/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ applicationId: id, answer }),
+      });
+
+      if (!res.ok) throw new Error(`Submit failed: ${res.status}`);
+
+      const data = (await res.json()) as { question?: string; done?: boolean };
+
+      if (data.done || !data.question) {
+        // Interview finished — fetch summary
+        endSession();
+        return;
+      }
+
+      addLine("AI", data.question);
+      setPhase("ai-speaking");
+      speak(data.question, () => startListening());
+    } catch (err) {
+      setError("Failed to submit answer. Please check your connection.");
+      setPhase("user-recording");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, liveAnswer, addLine, speak, startListening]);
+
+  /* ══════════════════════════════════
+     START SESSION — POST /start
+  ══════════════════════════════════ */
+  const startSession = useCallback(
+    async (mediaStream: MediaStream) => {
+      setPhase("connecting");
+      try {
+        const res = await fetch(`${BACKEND}/api/interview/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ applicationId: id }),
+        });
+
+        if (!res.ok) throw new Error(`Start failed: ${res.status}`);
+
+        const data = (await res.json()) as { question: string };
+        addLine("AI", data.question);
+        setPhase("ai-speaking");
+        speak(data.question, () => startListening());
+      } catch (err) {
+        setError("Could not start interview. Please try again.");
+        setPhase("connecting");
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    { label: "Duration", value: formatTime(elapsed) },
-  ];
+    [id, addLine, speak, startListening],
+  );
+
+  /* ══════════════════════════════════
+     END SESSION — GET /summary
+  ══════════════════════════════════ */
+  const endSession = useCallback(() => {
+    window.speechSynthesis?.cancel();
+    recognitionRef.current?.abort();
+    recognitionRef.current = null;
+    stream?.getTracks().forEach((t) => t.stop());
+    setPhase("ended");
+    navigate(`/interview/summary/${id}`);
+  }, [stream, id, navigate]);
+
+  /* ── Get camera + mic, then start session ── */
+  useEffect(() => {
+    let active = true;
+
+    navigator.mediaDevices
+      .getUserMedia({ video: true, audio: true })
+      .then((ms) => {
+        if (!active) {
+          ms.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        setStream(ms);
+        startSession(ms);
+      })
+      .catch((err: DOMException) => {
+        if (!active) return;
+        if (err.name === "NotAllowedError") {
+          setError(
+            "Camera and microphone access denied. Please allow permissions and reload.",
+          );
+          return;
+        }
+        setCameraError(true);
+        // audio-only fallback
+        navigator.mediaDevices
+          .getUserMedia({ audio: true })
+          .then((ms) => {
+            if (active) {
+              setStream(ms);
+              startSession(ms);
+            }
+          })
+          .catch(() => {
+            if (active)
+              setError("Microphone access is required for this interview.");
+          });
+      });
+
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ─── derived ─── */
+  const isRecording = phase === "user-recording";
+  const isSpeaking = phase === "ai-speaking";
 
   return (
     <>
       <style>{`
-        @keyframes soundBar {
-          from { transform: scaleY(0.4); }
-          to   { transform: scaleY(1.4); }
-        }
-        @keyframes waveBar {
-          from { transform: scaleY(0.3); opacity: 0.5; }
-          to   { transform: scaleY(1); opacity: 1; }
-        }
-        @keyframes blink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0; }
-        }
-        @keyframes fadeSlideUp {
-          from { opacity: 0; transform: translateY(10px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        .transcript-entry { animation: fadeSlideUp 0.35s ease both; }
+        @keyframes soundBar  { from{transform:scaleY(.4)} to{transform:scaleY(1.4)} }
+        @keyframes waveBar   { from{transform:scaleY(.3);opacity:.5} to{transform:scaleY(1);opacity:1} }
+        @keyframes blink     { 0%,100%{opacity:1} 50%{opacity:0} }
+        @keyframes fadeSlideUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+        .transcript-entry    { animation: fadeSlideUp .35s ease both; }
       `}</style>
+
+      {/* Error banner */}
+      {error && (
+        <div className="fixed top-0 inset-x-0 z-50 flex items-center gap-2 bg-destructive/90 text-destructive-foreground text-sm px-6 py-3 backdrop-blur-sm">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {error}
+          <button
+            className="ml-auto underline text-xs"
+            onClick={() => setError(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="min-h-screen bg-background flex flex-col">
         <Navbar />
@@ -358,16 +614,16 @@ export default function Interview() {
                   variant="outline"
                   className="text-[10px] border-primary/30 text-primary"
                 >
-                  Job #{id}
+                  Application #{id}
                 </Badge>
               </div>
             </div>
 
-            {/* Main layout */}
+            {/* Main grid */}
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-5 h-[calc(100vh-200px)] min-h-130">
               {/* ── Left: AI Panel ── */}
               <div className="flex flex-col gap-4 min-h-0">
-                {/* AI Orb card */}
+                {/* AI orb */}
                 <div
                   className="rounded-2xl border border-border bg-card p-6 flex items-center gap-6"
                   style={{
@@ -375,30 +631,46 @@ export default function Interview() {
                       "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary)/0.04) 100%)",
                   }}
                 >
-                  <AIOrb isSpeaking={isAISpeaking} />
+                  <AIOrb phase={phase} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <h2 className="font-body text-lg font-semibold text-secondary-foreground">
                         Apex AI
                       </h2>
                       <span
-                        className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
-                          isAISpeaking
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded-full border transition-colors duration-300 ${
+                          isSpeaking
                             ? "bg-gold/15 text-gold border-gold/30"
-                            : "bg-muted text-muted-foreground border-border"
+                            : isRecording
+                              ? "bg-accent/20 text-accent border-accent/30"
+                              : phase === "processing"
+                                ? "bg-lavender/20 text-lavender border-lavender/30"
+                                : "bg-muted text-muted-foreground border-border"
                         }`}
                       >
-                        {isAISpeaking ? "Speaking…" : "Listening"}
+                        {phaseLabel(phase)}
                       </span>
                     </div>
                     <p className="text-sm text-muted-foreground mb-3 leading-relaxed line-clamp-2">
-                      {isAISpeaking
-                        ? transcript[transcript.length - 1]?.speaker === "AI"
-                          ? transcript[transcript.length - 1]?.text
-                          : "Processing your answer…"
-                        : "Listening to your response…"}
+                      {isSpeaking
+                        ? (transcript.findLast?.((t) => t.speaker === "AI")
+                            ?.text ?? "Preparing question…")
+                        : isRecording
+                          ? "Speak your answer clearly, then press Done Speaking."
+                          : phase === "processing"
+                            ? "Submitting your answer…"
+                            : phase === "connecting"
+                              ? "Starting your interview session…"
+                              : "Session complete."}
                     </p>
-                    <Waveform active={isAISpeaking} />
+                    <Waveform
+                      active={isSpeaking}
+                      color={
+                        isRecording
+                          ? "hsl(var(--accent)/0.7)"
+                          : "hsl(var(--primary)/0.7)"
+                      }
+                    />
                   </div>
                 </div>
 
@@ -420,22 +692,54 @@ export default function Interview() {
                     ref={transcriptRef}
                     className="flex-1 overflow-y-auto px-5 py-4 space-y-4 scrollbar-thin scrollbar-thumb-border"
                   >
-                    {transcript.map((entry, i) => (
-                      <div key={i} className="transcript-entry">
-                        <TranscriptEntry
-                          {...entry}
-                          isLatest={i === transcript.length - 1}
-                        />
+                    {transcript.length === 0 ? (
+                      <div className="flex items-center justify-center h-full">
+                        <p className="text-xs text-muted-foreground font-mono">
+                          Starting session…
+                        </p>
                       </div>
-                    ))}
+                    ) : (
+                      transcript.map((entry, i) => (
+                        <div key={i} className="transcript-entry">
+                          <TranscriptEntry
+                            {...entry}
+                            isLatest={
+                              i === transcript.length - 1 && !liveAnswer
+                            }
+                          />
+                        </div>
+                      ))
+                    )}
+
+                    {/* Live interim answer while user is speaking */}
+                    {isRecording && liveAnswer && (
+                      <div className="transcript-entry flex gap-3 flex-row-reverse opacity-70">
+                        <div className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-[9px] font-mono font-bold mt-0.5 bg-gold/20 text-gold border border-gold/30">
+                          ME
+                        </div>
+                        <div className="max-w-[82%] items-end flex flex-col gap-1">
+                          <div className="px-4 py-2.5 rounded-2xl rounded-tr-sm text-sm leading-relaxed bg-primary/10 text-secondary-foreground border border-primary/10 border-dashed">
+                            {liveAnswer}
+                            <span className="inline-block w-1.5 h-4 bg-gold/60 ml-1 rounded-sm animate-[blink_1s_step-end_infinite] align-middle" />
+                          </div>
+                          <span className="text-[10px] text-muted-foreground font-mono px-1">
+                            live
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
               {/* ── Right: User Panel ── */}
               <div className="flex flex-col gap-4">
-                {/* Camera */}
-                <UserCamera isMuted={isMuted} />
+                <UserVideo
+                  stream={stream}
+                  isMuted={isMuted}
+                  cameraError={cameraError}
+                  phase={phase}
+                />
 
                 {/* Controls */}
                 <div
@@ -445,15 +749,16 @@ export default function Interview() {
                       "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--gold)/0.02) 100%)",
                   }}
                 >
-                  {/* Mute */}
+                  {/* Mute mic */}
                   <button
                     onClick={() => setIsMuted((m) => !m)}
-                    className={`w-11 h-11 rounded-full flex items-center justify-center border transition-all duration-200 ${
+                    disabled={!isRecording}
+                    className={`w-11 h-11 rounded-full flex items-center justify-center border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed ${
                       isMuted
                         ? "bg-destructive/20 border-destructive/40 text-destructive hover:bg-destructive/30"
                         : "bg-secondary border-border text-muted-foreground hover:text-foreground hover:border-primary/30"
                     }`}
-                    title={isMuted ? "Unmute" : "Mute"}
+                    title={isMuted ? "Unmute microphone" : "Mute microphone"}
                   >
                     {isMuted ? (
                       <MicOff className="w-4 h-4" />
@@ -462,31 +767,66 @@ export default function Interview() {
                     )}
                   </button>
 
-                  {/* End call */}
-                  <button
-                    onClick={() => setShowEndConfirm(true)}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 transition-all duration-200 shadow-[0_4px_20px_hsl(var(--destructive)/0.3)] hover:shadow-[0_6px_28px_hsl(var(--destructive)/0.45)] hover:-translate-y-0.5"
-                  >
-                    <PhoneOff className="w-4 h-4" />
-                    End Interview
-                  </button>
+                  {/* Context button */}
+                  {isRecording ? (
+                    <button
+                      onClick={submitAnswer}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-200 hover:-translate-y-0.5"
+                      style={{
+                        background: "hsl(var(--gold))",
+                        color: "hsl(var(--background))",
+                        boxShadow: "0 4px 20px hsl(var(--gold)/0.4)",
+                      }}
+                    >
+                      <Mic className="w-4 h-4" />
+                      Done Speaking
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setShowEndConfirm(true)}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 transition-all duration-200 shadow-[0_4px_20px_hsl(var(--destructive)/0.3)] hover:shadow-[0_6px_28px_hsl(var(--destructive)/0.45)] hover:-translate-y-0.5"
+                    >
+                      <PhoneOff className="w-4 h-4" />
+                      End Interview
+                    </button>
+                  )}
 
-                  {/* Volume toggle */}
+                  {/* Speaker mute */}
                   <button
-                    className="w-11 h-11 rounded-full flex items-center justify-center border border-border bg-secondary text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all duration-200"
-                    title="Toggle volume"
+                    onClick={() => setSpeakerMuted((m) => !m)}
+                    className={`w-11 h-11 rounded-full flex items-center justify-center border transition-all duration-200 ${
+                      speakerMuted
+                        ? "bg-destructive/20 border-destructive/40 text-destructive hover:bg-destructive/30"
+                        : "bg-secondary border-border text-muted-foreground hover:text-foreground hover:border-primary/30"
+                    }`}
+                    title={speakerMuted ? "Unmute speaker" : "Mute speaker"}
                   >
-                    <Volume2 className="w-4 h-4" />
+                    {speakerMuted ? (
+                      <VolumeX className="w-4 h-4" />
+                    ) : (
+                      <Volume2 className="w-4 h-4" />
+                    )}
                   </button>
                 </div>
 
-                {/* Session info card */}
+                {/* Session info */}
                 <div className="rounded-2xl border border-border bg-card px-5 py-4 space-y-3">
                   <h4 className="font-mono text-[10px] tracking-widest uppercase text-primary">
                     Session Info
                   </h4>
                   <div className="space-y-2">
-                    {sessionRows.map(({ label, value }) => (
+                    {[
+                      { label: "Application", value: `#${id}` },
+                      {
+                        label: "Questions",
+                        value: `${transcript.filter((t) => t.speaker === "AI").length} asked`,
+                      },
+                      {
+                        label: "Answers",
+                        value: `${transcript.filter((t) => t.speaker === "User").length} given`,
+                      },
+                      { label: "Duration", value: formatTime(elapsed) },
+                    ].map(({ label, value }) => (
                       <div
                         key={label}
                         className="flex items-center justify-between text-sm"
@@ -505,7 +845,7 @@ export default function Interview() {
         </main>
       </div>
 
-      {/* End interview confirmation overlay */}
+      {/* End confirm modal */}
       {showEndConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
           <div
@@ -519,8 +859,8 @@ export default function Interview() {
               End Interview?
             </h3>
             <p className="text-sm text-muted-foreground text-center mb-6 leading-relaxed">
-              Your session will be saved and you'll receive a detailed feedback
-              report.
+              Your session will be saved and a detailed feedback report will be
+              generated.
             </p>
             <div className="flex gap-3">
               <Button
@@ -533,9 +873,9 @@ export default function Interview() {
               <Button
                 variant="destructive"
                 className="flex-1"
-                onClick={() => navigate("/jobs")}
+                onClick={endSession}
               >
-                End Session
+                End &amp; See Results
               </Button>
             </div>
           </div>
