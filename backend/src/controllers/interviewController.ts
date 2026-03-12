@@ -3,9 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import {Application} from '../models/Application';
 import { Interview } from '../models/Interview';
-import { parseJobDescription } from '../../ai/chain/parseJobDescription.chain';
-import { parseResume } from '../../ai/services/parseresume.services';
-import { generateQuestion } from '../../ai/services/generateQuestion.services';
+import { loadResume } from '../../ai/loader/resume.loader';
+import { generateInterviewSetup } from '../../ai/chain/generateInterviewSetup.chain';
 import Job from '../models/Job';
 import User from '../models/User';
 import { startInterview as startTextInterview, processTextAnswer } from '../../ai/services/interview.services';
@@ -22,6 +21,11 @@ export const startInterview = async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    const candidateDetails = await User.findById(application.candidateDetails);
+    if (!candidateDetails) {
+      res.status(404).json({ success: false, message: 'Candidate not found' });
+      return;
+    }
     
     // fetch teh job desc from the database
 
@@ -33,47 +37,30 @@ export const startInterview = async (req: Request, res: Response): Promise<void>
 console.log("job des ",jobdetails.description);
 
 
-    // get the job description
-    const parsedJobDescription = await parseJobDescription(jobdetails.description as string);
-
-
-
-
-
-
-    // get the resume from the database
-    const candidateDetails =await User.findById(application.candidateDetails);
-    if (!candidateDetails) {
-      res.status(404).json({ success: false, message: 'Resume not found' });
+    // extract text directly from the resume PDF
+    const rawResumeText = await loadResume(application.resumeUrl as string);
+    if (!rawResumeText) {
+      res.status(404).json({ success: false, message: 'Resume could not be read' });
       return;
     }
-    
-    // get the resume from the database
-    const parsedResume = await parseResume(application.resumeUrl as string);
 
-    // generate the questions using Gemini
-    const resumeString = JSON.stringify(parsedResume, null, 2);
-    const jobDescString = JSON.stringify(parsedJobDescription, null, 2);
-
-    const questionsRaw = await generateQuestion(
+    // Single unified API Call to Gemini (Reduces 3 queries into 1)
+    const setupData = await generateInterviewSetup(
       candidateDetails.fullName,
       candidateDetails.yearOfExperience,
-      resumeString,
-      jobDescString
+        rawResumeText,
+      jobdetails.description as string
     );
 
     console.log("\n==================== PARSED RESUME ====================");
-    console.log(resumeString);
+    console.log(JSON.stringify(setupData.parsedResume, null, 2));
     console.log("\n==================== PARSED JOB DESC ====================");
-    console.log(jobDescString);
+    console.log(JSON.stringify(setupData.parsedJobDescription, null, 2));
     console.log("\n==================== GENERATED QUESTIONS ====================");
-    console.log(JSON.stringify(questionsRaw, null, 2));
+    console.log(JSON.stringify(setupData.questions, null, 2));
     console.log("=========================================================\n");
 
-    // Normalise questions into a simple string array
-    const questions: string[] = Array.isArray(questionsRaw)
-      ? questionsRaw
-      : (questionsRaw?.questions ?? []);
+    const questions: string[] = Array.isArray(setupData.questions) ? setupData.questions : [];
 
     if (!questions.length) {
       res.status(500).json({ success: false, message: 'Failed to generate interview questions' });

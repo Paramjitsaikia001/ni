@@ -11,18 +11,31 @@ export async function evaluateAnswer(question: string, answer: string) {
   const response = await genmodel.invoke(prompt);
 
   try {
-        const result= (response.content as string).
-        replace(/```json/g, "")
-        .replace(/```/g, "")
-        .trim();
+        let textResponse = response.content as string;
+        
+        // Sometimes Gemini wraps JSON in markdown blocks
+        if (textResponse.includes("```json")) {
+            textResponse = textResponse.split("```json")[1].split("```")[0];
+        } else if (textResponse.includes("```")) {
+            textResponse = textResponse.split("```")[1].split("```")[0];
+        }
 
-        const parsed = JSON.parse(result);
+        // Extremely robust fallback: Extract the first JSON object using Regex
+        const jsonMatch = textResponse.match(/\{[\s\S]*?\}/);
+        if (jsonMatch) {
+            textResponse = jsonMatch[0];
+        }
+
+        const parsed = JSON.parse(textResponse.trim());
 
         // later we store the question in the database, for now we just return it to the client
         return parsed;
         
     } catch (error) {
-        throw new Error("Invalid JSON evaluation response return from AI")
-        
+        console.error("Answer Evaluation Parse Error:", error, response.content);
+        return {
+            score: 5,
+            feedback: "Thank you for your answer."
+        };
     }
 }

@@ -3,6 +3,8 @@ import { Interview } from '../models/Interview';
 import { processTextAnswer } from '../../ai/services/interview.services';
 import { sarvamTTS } from '../../ai/chain/sarvamTTS.chain';
 import { speechToText } from '../../ai/chain/sarvamSTT.chain';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * Handles the real-time interview logic via WebSockets.
@@ -58,8 +60,22 @@ export const setupInterviewSocket = (io: Server) => {
           if (audioBase64) {
              try {
                  const buffer = Buffer.from(audioBase64, 'base64');
+                 
+                 // Save audio to uploads/user-ans/
+                 const ext = (mimeType || "audio/webm").includes("mp3") ? "mp3" : (mimeType || "").includes("wav") ? "wav" : "webm";
+                 const ansDir = path.join(process.cwd(), 'uploads', 'user-ans');
+                 if (!fs.existsSync(ansDir)) {
+                     fs.mkdirSync(ansDir, { recursive: true });
+                 }
+                 const filename = `ans_${interviewId}_${Date.now()}.${ext}`;
+                 fs.writeFileSync(path.join(ansDir, filename), buffer);
+                 console.log(`💾 Saved user audio answer to: uploads/user-ans/${filename}`);
+
                  const sttText = await speechToText(buffer, mimeType || "audio/webm");
-                 if (sttText) transcript = sttText;
+                 if (sttText) {
+                     transcript = sttText;
+                     console.log(`🎙️  STT Transcript: "${sttText}"`);
+                 }
              } catch (err) {
                  console.error("STT Error:", err);
              }
@@ -95,21 +111,26 @@ export const setupInterviewSocket = (io: Server) => {
 
           await interviewDoc.save();
 
-          io.to(interviewId).emit('ai_feedback', {
-            transcript: result.transcript,
-            score: result.score,
-            feedback: result.feedback
-          });
-
           if (!isCompleted && result.nextQuestion) {
             try {
-              const nextAudioBuffer = await sarvamTTS(result.nextQuestion);
+              // Combine feedback and next question so AI speaks both
+              const combinedText = `${result.feedback} ${result.nextQuestion}`;
+              const nextAudioBuffer = await sarvamTTS(combinedText);
+              
+              // We keep the UI separate, but the audio contains both
+              io.to(interviewId).emit('ai_feedback', {
+                feedback: result.feedback
+              });
+              
               io.to(interviewId).emit('ai_question', {
                 question: result.nextQuestion,
                 audio: nextAudioBuffer.toString('base64')
               });
             } catch (err) {
               console.error("TTS Error:", err);
+              io.to(interviewId).emit('ai_feedback', {
+                feedback: result.feedback
+              });
               io.to(interviewId).emit('ai_question', {
                 question: result.nextQuestion
               });
@@ -117,7 +138,26 @@ export const setupInterviewSocket = (io: Server) => {
           }
 
           if (isCompleted) {
-            io.to(interviewId).emit('interview_end');
+            const endText = `${result.feedback} Thank you for your time. The interview is now complete. You may end the call.`;
+            try {
+                const endAudioBuffer = await sarvamTTS(endText);
+                io.to(interviewId).emit('ai_feedback', {
+                  feedback: result.feedback
+                });
+                io.to(interviewId).emit('ai_question', {
+                  question: "Thank you for your time. The interview is now complete. You may end the call.",
+                  audio: endAudioBuffer.toString('base64'),
+                  isEnd: true
+                });
+            } catch (err) {
+                io.to(interviewId).emit('ai_feedback', {
+                  feedback: result.feedback
+                });
+                io.to(interviewId).emit('ai_question', {
+                  question: "Thank you for your time. The interview is now complete. You may end the call.",
+                  isEnd: true
+                });
+            }
           }
         } catch (error) {
           console.error('❌ Socket AI Error:', error);

@@ -119,32 +119,88 @@ function AIOrb({ phase }: { phase: SessionPhase }) {
   );
 }
 
+// postion :
+//skill :
+// expre
+
+
 /* ─── Waveform ─── */
 function Waveform({
   active,
   color = "hsl(var(--primary)/0.7)",
+  stream = null,
 }: {
   active: boolean;
   color?: string;
+  stream?: MediaStream | null;
 }) {
+  const [volume, setVolume] = useState(0);
+
+  useEffect(() => {
+    if (!active || !stream || stream.getAudioTracks().length === 0) {
+      setVolume(0);
+      return;
+    }
+
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+
+    const audioCtx = new AudioContext();
+    const analyser = audioCtx.createAnalyser();
+    const source = audioCtx.createMediaStreamSource(stream);
+    
+    source.connect(analyser);
+    analyser.fftSize = 256;
+    
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    
+    let animationId: number;
+    
+    const updateVolume = () => {
+      analyser.getByteFrequencyData(dataArray);
+      let sum = 0;
+      for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
+      const avg = sum / bufferLength;
+      
+      // Normalize roughly 0 to 1
+      setVolume(Math.min(1, avg / 60));
+      animationId = requestAnimationFrame(updateVolume);
+    };
+    
+    updateVolume();
+    
+    return () => {
+      cancelAnimationFrame(animationId);
+      source.disconnect();
+      audioCtx.close().catch(console.error);
+    };
+  }, [active, stream]);
+
   return (
     <div className="flex items-center gap-0.75 h-8">
-      {Array.from({ length: 28 }).map((_, i) => (
-        <span
-          key={i}
-          className="rounded-full"
-          style={{
-            width: "3px",
-            background: color,
-            // eslint-disable-next-line react-hooks/purity
-            height: active ? `${8 + Math.random() * 22}px` : "4px",
-            transition: "height 0.15s ease",
-            animation: active
-              ? `waveBar 0.5s ease-in-out ${(i % 7) * 0.07}s infinite alternate`
-              : "none",
-          }}
-        />
-      ))}
+      {Array.from({ length: 28 }).map((_, i) => {
+        // When streaming microphone input, mix generic animation with the live volume magnitude
+        const baseHeight = active && !stream ? (8 + Math.random() * 22) : 4;
+        const reactiveHeight = stream && active ? 4 + (volume * (10 + Math.random() * 20)) : baseHeight;
+
+        return (
+          <span
+            key={i}
+            className="rounded-full"
+            style={{
+              width: "3px",
+              background: color,
+              // eslint-disable-next-line react-hooks/purity
+              height: `${reactiveHeight}px`,
+              transition: stream ? "height 0.05s ease" : "height 0.15s ease",
+              animation: (active && !stream)
+                ? `waveBar 0.5s ease-in-out ${(i % 7) * 0.07}s infinite alternate`
+                : "none",
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -332,10 +388,12 @@ export default function Interview() {
 
   // id initially holds applicationId; we convert to interviewId after calling backend
   const [interviewId, setInterviewId] = useState<string | null>(null);
+  const fetchRef = useRef(false);
 
   // kick off interview process on mount
   useEffect(() => {
-    if (!id) return;
+    if (!id || fetchRef.current) return;
+    fetchRef.current = true;
     (async () => {
       try {
         const r = await fetch(`${API_BASE}/interview/start`, {
@@ -378,6 +436,8 @@ export default function Interview() {
   const speakerMutedRef = useRef(false);
   const finalAnswerRef = useRef(""); // accumulates confirmed STT words
   const socketRef = useRef<Socket | null>(null);
+  const startListeningRef = useRef<() => void>(() => {});
+  const endSessionRef = useRef<() => void>(() => {});
 
   /* keep ref in sync */
   useEffect(() => {
@@ -495,14 +555,18 @@ export default function Interview() {
     }
 
     // Start recording audio for Sarvam backend STT
-    if (stream) {
+    if (stream && stream.getAudioTracks().length > 0) {
         try {
-            const recorder = new MediaRecorder(stream);
+            // Only extract the audio track to prevent recording massive video blobs
+            const audioStream = new MediaStream([stream.getAudioTracks()[0]]);
+            const recorder = new MediaRecorder(audioStream, { mimeType: "audio/webm" });
             mediaRecorderRef.current = recorder;
             recorder.ondataavailable = (e) => {
-                if (e.data.size > 0) audioChunksRef.current.push(e.data);
+                if (e.data && e.data.size > 0) {
+                    audioChunksRef.current.push(e.data);
+                }
             };
-            recorder.start();
+            recorder.start(1000); // 1-second chunks so data is ready when stopped
         } catch (err) {
             console.error("MediaRecorder start failed:", err);
         }
@@ -596,6 +660,10 @@ export default function Interview() {
     navigate(`/jobs`);
   }, [stream, id, navigate]);
 
+  // Keep refs up to date
+  startListeningRef.current = startListening;
+  endSessionRef.current = endSession;
+
   /* ── socket creation & handlers (runs once) ── */
   useEffect(() => {
     const socket = io(SOCKET_ENDPOINT, {
@@ -607,14 +675,26 @@ export default function Interview() {
       console.log("Interview Socket Connected:", socket.id);
     });
 
-    socket.on("ai_question", (payload: { question: string; audio?: string }) => {
+    socket.on("ai_question", (payload: { question: string; audio?: string; isEnd?: boolean }) => {
       if (!payload?.question) return;
       addLine("AI", payload.question);
       setPhase("ai-speaking");
       if (payload.audio) {
-          playAudioBase64(payload.audio, () => startListening());
+          playAudioBase64(payload.audio, () => {
+              if (payload.isEnd) {
+                  setTimeout(() => endSessionRef.current(), 3000);
+              } else {
+                  startListeningRef.current();
+              }
+          });
       } else {
-          speak(payload.question, () => startListening());
+          speak(payload.question, () => {
+              if (payload.isEnd) {
+                  setTimeout(() => endSessionRef.current(), 3000);
+              } else {
+                  startListeningRef.current();
+              }
+          });
       }
     });
 
@@ -624,7 +704,7 @@ export default function Interview() {
     });
 
     socket.on("interview_end", () => {
-      endSession();
+      endSessionRef.current();
     });
 
     socket.on("disconnect", () => {
@@ -635,7 +715,7 @@ export default function Interview() {
       socket.disconnect();
     };
     // handlers use stable refs for addLine etc; if those ever change you may need to update
-  }, [addLine, endSession, speak, startListening]);
+  }, [addLine, speak, playAudioBase64]);
 
   /* ── when we know the interviewId, tell server to join ── */
   useEffect(() => {

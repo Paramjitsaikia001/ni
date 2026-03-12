@@ -1,32 +1,34 @@
+import { z } from "zod";
 import { genmodel } from "../config/gemini.config.ts";
 import { parseResumePrompt } from "../prompt/parseResume.prompt.ts";
 
-export async function parseResumeChain(resume:String){
-    const prompt = await parseResumePrompt.format({resume})
+const resumeSchema = z.object({
+  name: z.string().nullable().describe("The candidate's full name"),
+  email: z.string().nullable().describe("The candidate's email address"),
+  phone: z.string().nullable().describe("The candidate's phone number"),
+  skills: z.array(z.string()).default([]).describe("An array of technical skills"),
+  experienceYears: z.string().nullable().describe("Total years of experience if mentioned"),
+  projects: z.array(
+    z.object({
+      name: z.string().describe("The name of the project"),
+      technologies: z.array(z.string()).default([]).describe("Technologies used in the project")
+    })
+  ).default([]).describe("An array of project objects with name and technologies used"),
+  education: z.string().nullable().describe("Education history mentioned"),
+  certifications: z.array(z.string()).default([]).describe("Certifications if mentioned")
+});
 
-    const result = await genmodel.invoke(prompt);
-    
+export async function parseResumeChain(resume: string) {
+    const prompt = await parseResumePrompt.format({
+        resume
+    });
+
     try {
-        const rawContent = result.content as string;
-        const cleaned = rawContent
-            .replace(/```(json)?/gi, "")
-            .replace(/```/g, "")
-            .trim();
-        
-        const firstBrace = cleaned.indexOf('{');
-        const lastBrace = cleaned.lastIndexOf('}');
-
-        if (firstBrace === -1 || lastBrace === -1) {
-            throw new Error("AI response did not contain a valid JSON object");
-        }
-
-        const jsonString = cleaned.substring(firstBrace, lastBrace + 1);
-        const parsed = JSON.parse(jsonString);
-
+        const structuredModel = genmodel.withStructuredOutput(resumeSchema);
+        const parsed = await structuredModel.invoke(prompt);
         return parsed;
-
     } catch (error) {
         console.error("Resume Parse Error:", error);
-        throw new Error("Invalid JSON resume response return from AI")
+        throw new Error("Invalid JSON resume response returned from AI");
     }
 }

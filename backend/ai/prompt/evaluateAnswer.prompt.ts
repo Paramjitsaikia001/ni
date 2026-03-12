@@ -17,7 +17,7 @@ Evaluate using these criteria:
 - clarity of explanation
 - depth of knowledge
 
-Return ONLY valid JSON in this format:
+Return ONLY valid raw JSON in this exact format without any markdown wrappers or backticks:
 
 {{
   "score": number,
