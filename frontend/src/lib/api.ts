@@ -30,7 +30,7 @@ export interface CreateJobPayload {
   expiresAt: string;
 }
 
-// --- Auth Functions (Added these to ensure they match the API_BASE) ---
+// --- Auth Functions ---
 
 export async function registerUser(data: any) {
   const res = await fetch(`${API_BASE}/auth/register`, {
@@ -61,13 +61,13 @@ export async function loginUser(data: any) {
 // --- Job Functions ---
 
 export async function fetchJobs(): Promise<Job[]> {
-  // Logic: http://localhost:5000/api + /jobs = http://localhost:5000/api/jobs
+  // FIXED: Removed the extra "/api" from the string
   const res = await fetch(`${API_BASE}/jobs`, {
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error("Failed to fetch jobs");
   const result = await res.json();
-  return result.data; // Added .data because your backend wraps it
+  return result.data; 
 }
 
 export async function fetchJob(id: string): Promise<Job> {

@@ -10,6 +10,8 @@ import gsap from "gsap";
 import LoginPage from "./pages/LoginPage";
 import JobsPage, { JobDetail } from "./pages/JobsPage";
 import CreateJob from "./pages/CreateJobsPage";
+import Interview from "./pages/InterviewPage";
+import ApplyPage from "./pages/ApplyPage"; // NEW: Ensure this import exists!
 
 // Register GSAP plugins for animations
 gsap.registerPlugin(ScrollTrigger);
@@ -23,24 +25,25 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          {/* Public Routes */}
+          {/* Core Auth & Landing */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
 
-          {/* Dashboard & Jobs Routes 
-              We add /dashboard as a redirect to /jobs to handle 
-              the successful login navigation correctly.
-          */}
+          {/* DASHBOARD REDIRECT (Fixes the 404 after login) */}
           <Route path="/dashboard" element={<Navigate to="/jobs" replace />} />
-          
+
+          {/* Jobs & Details */}
           <Route path="/jobs" element={<JobsPage />}>
-            {/* Nested route for specific job details */}
             <Route path=":id" element={<JobDetail />} />
           </Route>
           
           <Route path="/jobs/create" element={<CreateJob />} />
 
-          {/* 404 Fallback - This handles any undefined routes */}
+          {/* TEAMMATE'S NEW PAGES */}
+          <Route path="/interview/:id" element={<Interview />} />
+          <Route path="/apply/:id" element={<ApplyPage />} /> 
+
+          {/* 404 Fallback */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
