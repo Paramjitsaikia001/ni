@@ -60,7 +60,7 @@ const Hero = () => {
             </p>
 
             <div className="hero-actions flex items-center gap-4 flex-wrap mb-16">
-              <a href="#jobs" className="group inline-flex items-center gap-2.5 px-7 py-4 rounded-xl bg-primary text-primary-foreground text-[.88rem] font-semibold shadow-[0_4px_24px_hsl(var(--gold)/0.4)] hover:-translate-y-0.5 hover:shadow-[0_12px_40px_hsl(var(--gold)/0.5)] transition-all duration-300">
+              <a href="/jobs" className="group inline-flex items-center gap-2.5 px-7 py-4 rounded-xl bg-primary text-primary-foreground text-[.88rem] font-semibold shadow-[0_4px_24px_hsl(var(--gold)/0.4)] hover:-translate-y-0.5 hover:shadow-[0_12px_40px_hsl(var(--gold)/0.5)] transition-all duration-300">
                 <svg className="transition-transform group-hover:scale-110" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.099zm-5.242 1.156a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11z" /></svg>
                 Explore Jobs
               </a>

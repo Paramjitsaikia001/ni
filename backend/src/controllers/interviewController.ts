@@ -3,7 +3,6 @@ import fs from 'fs';
 import path from 'path';
 import {Application} from '../models/Application';
 import { Interview } from '../models/Interview';
-import { evaluateAndContinue } from '../services/aiService';
 import { parseJobDescription } from '../../ai/chain/parseJobDescription.chain';
 import { parseResume } from '../../ai/services/parseresume.services';
 import { generateQuestion } from '../../ai/services/generateQuestion.services';

@@ -30,13 +30,13 @@ const Navbar = () => {
             HireGenie
           </a>
           <div className="hidden md:flex items-center gap-9">
-            <a href="#jobs" className="text-[.88rem] font-medium text-muted-foreground hover:text-secondary-foreground transition-colors">Jobs</a>
+            <a href="/jobs" className="text-[.88rem] font-medium text-muted-foreground hover:text-secondary-foreground transition-colors">Jobs</a>
             <a href="#how" className="text-[.88rem] font-medium text-muted-foreground hover:text-secondary-foreground transition-colors">How It Works</a>
             <a href="#testimonials" className="text-[.88rem] font-medium text-muted-foreground hover:text-secondary-foreground transition-colors">Stories</a>
           </div>
           <div className="flex items-center gap-3.5">
             <a href="/login" className="text-[.88rem] font-medium text-foreground hover:text-primary transition-colors hidden sm:block">Login</a>
-            <a href="#" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-[.82rem] font-semibold shadow-[0_4px_20px_hsl(var(--gold)/0.35)] hover:-translate-y-0.5 transition-transform">
+            <a href="/jobs/create" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-[.82rem] font-semibold shadow-[0_4px_20px_hsl(var(--gold)/0.35)] hover:-translate-y-0.5 transition-transform">
               Post a Job
             </a>
           </div>

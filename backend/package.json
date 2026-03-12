@@ -1,21 +1,29 @@
+
 {
-  "name": "backend",
+  "name": "hiregine_backend",
   "version": "1.0.0",
-  "license": "ISC",
-  "author": "",
+  "description": "AI Interviewer Bot Backend",
   "main": "server.ts",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "seed": "ts-node-dev src/scripts/seedJobs.ts",
+    "test": "echo \"No tests yet\""
   },
-  "keywords": [],
-  "description": "",
+  "keywords": [
+    "node",
+    "express",
+    "typescript",
+    "ai-interview"
+  ],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@langchain/community": "^1.1.22",
     "@langchain/core": "^1.1.31",
     "@langchain/google-genai": "^2.1.24",
-    "@types/cors": "^2.8.19",
     "axios": "^1.13.6",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
@@ -30,10 +38,13 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.1.0",
     "@types/node": "^25.4.0",
+    "@types/socket.io": "^3.0.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"
   }

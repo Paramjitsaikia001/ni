@@ -1,3 +1,4 @@
+
 import mongoose, { Schema } from 'mongoose';
 
 // Main Mongoose Schema for the Application
@@ -10,7 +11,7 @@ const ApplicationSchema = new Schema({
     type: String, 
     enum: ['Applied', 'Interviewing', 'Completed'], 
     default: 'Applied' 
-  }
+  },
 }, { timestamps: true });
 
-export const Application= mongoose.model('Application', ApplicationSchema);
+export const Application =   mongoose.model('Application', ApplicationSchema);
