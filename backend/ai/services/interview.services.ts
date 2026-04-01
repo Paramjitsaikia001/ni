@@ -5,7 +5,7 @@ export async function startInterview(interview: { questions: string[] }) {
   return { question };
 }
 
-// Browser handles STT & TTS; backend only evaluates text answers
+//  backend only evaluates text answers
 export async function processTextAnswer(
   interview: { questions: string[]; currentIndex: number },
   transcript: string

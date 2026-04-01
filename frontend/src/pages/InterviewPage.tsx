@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useSarvamSTT } from "../hooks/useSarvamSTT";
 import {
   Mic,
   MicOff,
@@ -25,7 +26,7 @@ const SOCKET_ENDPOINT =
 // debug connection target
 console.debug("InterviewPage socket endpoint:", SOCKET_ENDPOINT);
 
-/* ─── Types ─── */
+// types
 type Speaker = "AI" | "User";
 type SessionPhase =
   | "connecting"
@@ -40,13 +41,7 @@ interface TranscriptLine {
   time: string;
 }
 
-/* ─── Browser SpeechRecognition shim ─── */
-const SpeechRecognitionAPI =
-  (window as any).SpeechRecognition ||
-  (window as any).webkitSpeechRecognition ||
-  null;
-
-/* ─── Helpers ─── */
+//Formating time in mm:ss
 function formatTime(s: number): string {
   const m = Math.floor(s / 60)
     .toString()
@@ -54,7 +49,7 @@ function formatTime(s: number): string {
   const sec = (s % 60).toString().padStart(2, "0");
   return `${m}:${sec}`;
 }
-
+//
 function elapsedLabel(startedAt: number): string {
   return formatTime(Math.floor((Date.now() - startedAt) / 1000));
 }
@@ -123,7 +118,6 @@ function AIOrb({ phase }: { phase: SessionPhase }) {
 //skill :
 // expre
 
-
 /* ─── Waveform ─── */
 function Waveform({
   active,
@@ -138,38 +132,38 @@ function Waveform({
 
   useEffect(() => {
     if (!active || !stream || stream.getAudioTracks().length === 0) {
-      setVolume(0);
       return;
     }
 
-    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioContext =
+      window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContext) return;
 
     const audioCtx = new AudioContext();
     const analyser = audioCtx.createAnalyser();
     const source = audioCtx.createMediaStreamSource(stream);
-    
+
     source.connect(analyser);
     analyser.fftSize = 256;
-    
+
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
-    
+
     let animationId: number;
-    
+
     const updateVolume = () => {
       analyser.getByteFrequencyData(dataArray);
       let sum = 0;
       for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
       const avg = sum / bufferLength;
-      
+
       // Normalize roughly 0 to 1
       setVolume(Math.min(1, avg / 60));
       animationId = requestAnimationFrame(updateVolume);
     };
-    
+
     updateVolume();
-    
+
     return () => {
       cancelAnimationFrame(animationId);
       source.disconnect();
@@ -181,8 +175,11 @@ function Waveform({
     <div className="flex items-center gap-0.75 h-8">
       {Array.from({ length: 28 }).map((_, i) => {
         // When streaming microphone input, mix generic animation with the live volume magnitude
-        const baseHeight = active && !stream ? (8 + Math.random() * 22) : 4;
-        const reactiveHeight = stream && active ? 4 + (volume * (10 + Math.random() * 20)) : baseHeight;
+        const randomFactor =
+          0.45 + 0.35 * (Math.sin((i + 1) * 0.75) * 0.5 + 0.5);
+        const baseHeight = active && !stream ? 8 + randomFactor * 22 : 4;
+        const reactiveHeight =
+          stream && active ? 4 + volume * (10 + randomFactor * 20) : baseHeight;
 
         return (
           <span
@@ -191,12 +188,12 @@ function Waveform({
             style={{
               width: "3px",
               background: color,
-              // eslint-disable-next-line react-hooks/purity
               height: `${reactiveHeight}px`,
               transition: stream ? "height 0.05s ease" : "height 0.15s ease",
-              animation: (active && !stream)
-                ? `waveBar 0.5s ease-in-out ${(i % 7) * 0.07}s infinite alternate`
-                : "none",
+              animation:
+                active && !stream
+                  ? `waveBar 0.5s ease-in-out ${(i % 7) * 0.07}s infinite alternate`
+                  : "none",
             }}
           />
         );
@@ -253,11 +250,15 @@ function UserVideo({
   isMuted,
   cameraError,
   phase,
+  isSarvamListening,
+  sttStatus,
 }: {
   stream: MediaStream | null;
   isMuted: boolean;
   cameraError: boolean;
   phase: SessionPhase;
+  isSarvamListening: boolean;
+  sttStatus: "connected" | "connecting" | "offline";
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const isRecording = phase === "user-recording";
@@ -352,6 +353,24 @@ function UserVideo({
               <Mic className="w-2.5 h-2.5 mr-1" /> Live
             </Badge>
           )}
+          {isSarvamListening && (
+            <Badge className="text-[9px] h-5 px-2 border-primary/30 bg-primary/15 text-primary">
+              STT
+            </Badge>
+          )}
+
+          {sttStatus === "connecting" && (
+            <Badge className="text-[9px] h-5 px-2 border-amber-300/30 bg-amber-300/15 text-amber-500">
+              STT Reconnecting
+            </Badge>
+          )}
+
+          {sttStatus === "offline" && (
+            <Badge variant="destructive" className="text-[9px] h-5 px-2">
+              STT Offline
+            </Badge>
+          )}
+
           {isMuted && (
             <Badge variant="destructive" className="text-[9px] h-5 px-2">
               <MicOff className="w-2.5 h-2.5 mr-1" /> Muted
@@ -425,21 +444,29 @@ export default function Interview() {
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const [liveAnswer, setLiveAnswer] = useState(""); // interim STT text
   const [showEndConfirm, setShowEndConfirm] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [sttStatus, setSttStatus] = useState<
+    "connected" | "connecting" | "offline"
+  >("connecting");
 
   /* refs */
   const transcriptRef = useRef<HTMLDivElement>(null);
   const sessionStartRef = useRef(Date.now());
   const recognitionRef = useRef<any>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<BlobPart[]>([]);
   const speakerMutedRef = useRef(false);
-  const finalAnswerRef = useRef(""); // accumulates confirmed STT words
+  const finalAnswerRef = useRef(""); // final STT transcript
   const socketRef = useRef<Socket | null>(null);
+
+  const {
+    isListening: isSarvamListening,
+    start: startSarvam,
+    stop: stopSarvam,
+  } = useSarvamSTT(socketRef.current, interviewId);
+  const [error, setError] = useState<string | null>(null);
   const startListeningRef = useRef<() => void>(() => {});
   const endSessionRef = useRef<() => void>(() => {});
+  const submitAnswerRef = useRef<() => void>(() => {});
 
-  /* keep ref in sync */
+  /* keep refs in sync */
   useEffect(() => {
     speakerMutedRef.current = speakerMuted;
   }, [speakerMuted]);
@@ -471,8 +498,9 @@ export default function Interview() {
       stream?.getTracks().forEach((t) => t.stop());
       window.speechSynthesis?.cancel();
       recognitionRef.current?.abort();
+      stopSarvam();
     };
-  }, [stream]);
+  }, [stream, stopSarvam]);
 
   /* ── add a line to transcript ── */
   const addLine = useCallback((speaker: Speaker, text: string) => {
@@ -487,20 +515,20 @@ export default function Interview() {
   ══════════════════════════════════ */
   const playAudioBase64 = useCallback((base64: string, onDone: () => void) => {
     if (speakerMutedRef.current) {
-        onDone();
-        return;
+      onDone();
+      return;
     }
     try {
-        const audioSrc = `data:audio/mp3;base64,${base64}`;
-        const audio = new Audio(audioSrc);
-        audio.onended = onDone;
-        audio.onerror = onDone;
-        audio.play().catch((err) => {
-            console.error("Audio playback error:", err);
-            onDone();
-        });
-    } catch {
+      const audioSrc = `data:audio/mp3;base64,${base64}`;
+      const audio = new Audio(audioSrc);
+      audio.onended = onDone;
+      audio.onerror = onDone;
+      audio.play().catch((err) => {
+        console.error("Audio playback error:", err);
         onDone();
+      });
+    } catch {
+      onDone();
     }
   }, []);
 
@@ -527,51 +555,10 @@ export default function Interview() {
     setPhase("user-recording");
     setLiveAnswer("");
     finalAnswerRef.current = "";
-    audioChunksRef.current = [];
 
-    if (SpeechRecognitionAPI) {
-      const rec = new SpeechRecognitionAPI();
-      rec.continuous = true;
-      rec.interimResults = true;
-      rec.lang = "en-US";
-      recognitionRef.current = rec;
-
-      rec.onresult = (e: any) => {
-        let interim = "";
-        let final = finalAnswerRef.current;
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          const chunk = e.results[i][0].transcript;
-          if (e.results[i].isFinal) final += (final ? " " : "") + chunk;
-          else interim = chunk;
-        }
-        finalAnswerRef.current = final;
-        setLiveAnswer(final + (interim ? " " + interim : ""));
-      };
-
-      rec.onerror = () => {
-        /* ignore — user can still press Done */
-      };
-      rec.start();
-    }
-
-    // Start recording audio for Sarvam backend STT
-    if (stream && stream.getAudioTracks().length > 0) {
-        try {
-            // Only extract the audio track to prevent recording massive video blobs
-            const audioStream = new MediaStream([stream.getAudioTracks()[0]]);
-            const recorder = new MediaRecorder(audioStream, { mimeType: "audio/webm" });
-            mediaRecorderRef.current = recorder;
-            recorder.ondataavailable = (e) => {
-                if (e.data && e.data.size > 0) {
-                    audioChunksRef.current.push(e.data);
-                }
-            };
-            recorder.start(1000); // 1-second chunks so data is ready when stopped
-        } catch (err) {
-            console.error("MediaRecorder start failed:", err);
-        }
-    }
-  }, [stream]);
+    stopSarvam();
+    startSarvam();
+  }, [startSarvam, stopSarvam]);
 
   /* ══════════════════════════════════
      STOP & SUBMIT user's answer
@@ -579,53 +566,32 @@ export default function Interview() {
   const submitAnswer = useCallback(async () => {
     recognitionRef.current?.stop();
     recognitionRef.current = null;
+    stopSarvam();
 
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-        mediaRecorderRef.current.onstop = () => {
-            processAndSendSubmission();
-        };
-        mediaRecorderRef.current.stop();
-    } else {
-        processAndSendSubmission();
+    const answer = (finalAnswerRef.current || liveAnswer).trim();
+    if (!answer) {
+      setError("No transcript available to submit.");
+      return;
     }
 
-    function processAndSendSubmission() {
-        const answer = finalAnswerRef.current.trim() || liveAnswer.trim();
-        
-        if (audioChunksRef.current.length > 0) {
-            const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || "audio/webm" });
-            const mimeType = blob.type;
-            const reader = new FileReader();
-            reader.readAsDataURL(blob);
-            reader.onloadend = () => {
-                const base64data = (reader.result as string).split(',')[1];
-                sendPayload(answer, base64data, mimeType);
-            }
-        } else {
-            if (!answer) return; // nothing to submit
-            sendPayload(answer, "", "");
-        }
-    }
+    setLiveAnswer("");
+    addLine("User", answer);
+    setPhase("processing");
 
-    function sendPayload(answer: string, audioBase64: string, mimeType: string) {
-        setLiveAnswer("");
-        if (answer) addLine("User", answer);
-        else if (audioBase64) addLine("User", "(Audio submitted)");
-        setPhase("processing");
-
-        try {
-          socketRef.current?.emit("send_answer", {
-            interviewId: id,
-            answer,
-            audioBase64,
-            mimeType
-          });
-        } catch {
-          setError("Failed to submit answer. Please check your connection.");
-          setPhase("user-recording");
-        }
+    try {
+      socketRef.current?.emit("send_answer", {
+        interviewId: interviewId ?? id,
+        answer,
+      });
+    } catch {
+      setError("Failed to submit answer. Please check your connection.");
+      setPhase("user-recording");
     }
-  }, [id, liveAnswer, addLine]);
+  }, [id, interviewId, liveAnswer, addLine, stopSarvam]);
+
+  useEffect(() => {
+    submitAnswerRef.current = submitAnswer;
+  }, [submitAnswer]);
 
   /* ══════════════════════════════════
      START SESSION — POST /start
@@ -638,13 +604,13 @@ export default function Interview() {
   /* ── auto-submit on silence ── */
   useEffect(() => {
     if (phase !== "user-recording") return;
-    
+
     // Auto-submit after 4 seconds of silence, but only if they've explicitly started talking
     if (liveAnswer.trim().length > 0) {
-        const timeout = setTimeout(() => {
-            submitAnswer();
-        }, 4000);
-        return () => clearTimeout(timeout);
+      const timeout = setTimeout(() => {
+        submitAnswer();
+      }, 4000);
+      return () => clearTimeout(timeout);
     }
   }, [liveAnswer, phase, submitAnswer]);
 
@@ -655,10 +621,11 @@ export default function Interview() {
     window.speechSynthesis?.cancel();
     recognitionRef.current?.abort();
     recognitionRef.current = null;
+    stopSarvam();
     stream?.getTracks().forEach((t) => t.stop());
     setPhase("ended");
     navigate(`/jobs`);
-  }, [stream, id, navigate]);
+  }, [stream, navigate, stopSarvam]);
 
   // Keep refs up to date
   startListeningRef.current = startListening;
@@ -667,51 +634,93 @@ export default function Interview() {
   /* ── socket creation & handlers (runs once) ── */
   useEffect(() => {
     const socket = io(SOCKET_ENDPOINT, {
-  transports: ["websocket", "polling"]
-});
+      transports: ["websocket", "polling"],
+    });
     socketRef.current = socket;
 
     socket.on("connect", () => {
       console.log("Interview Socket Connected:", socket.id);
     });
 
-    socket.on("ai_question", (payload: { question: string; audio?: string; isEnd?: boolean }) => {
-      if (!payload?.question) return;
-      addLine("AI", payload.question);
-      setPhase("ai-speaking");
-      if (payload.audio) {
+    socket.on(
+      "ai_question",
+      (payload: { question: string; audio?: string; isEnd?: boolean }) => {
+        if (!payload?.question) return;
+        addLine("AI", payload.question);
+        setPhase("ai-speaking");
+        if (payload.audio) {
           playAudioBase64(payload.audio, () => {
-              if (payload.isEnd) {
-                  setTimeout(() => endSessionRef.current(), 3000);
-              } else {
-                  startListeningRef.current();
-              }
+            if (payload.isEnd) {
+              setTimeout(() => endSessionRef.current(), 3000);
+            } else {
+              startListeningRef.current();
+            }
           });
-      } else {
+        } else {
           speak(payload.question, () => {
-              if (payload.isEnd) {
-                  setTimeout(() => endSessionRef.current(), 3000);
-              } else {
-                  startListeningRef.current();
-              }
+            if (payload.isEnd) {
+              setTimeout(() => endSessionRef.current(), 3000);
+            } else {
+              startListeningRef.current();
+            }
           });
-      }
-    });
+        }
+      },
+    );
 
     socket.on("ai_feedback", (payload: { feedback: string }) => {
       if (!payload?.feedback) return;
       addLine("AI", payload.feedback);
     });
 
+    socket.on("partial_transcript", (data: { text: string }) => {
+      if (!data?.text) return;
+      setLiveAnswer(data.text);
+      finalAnswerRef.current = data.text;
+    });
+
+    socket.on("final_transcript", (text: string) => {
+      if (!text) return;
+      setLiveAnswer(text);
+      finalAnswerRef.current = text;
+    });
+
+    socket.on("stt_transcript", (text: string) => {
+      if (!text) return;
+      setLiveAnswer(text);
+      finalAnswerRef.current = text;
+    });
+
+    socket.on("speech_end", () => {
+      submitAnswerRef.current();
+    });
+
     socket.on("interview_end", () => {
       endSessionRef.current();
     });
 
+    socket.on(
+      "stt_status",
+      (status: "connected" | "connecting" | "offline") => {
+        setSttStatus(status);
+      },
+    );
+
     socket.on("disconnect", () => {
       console.log("Interview socket disconnected");
+      setSttStatus("offline");
     });
 
     return () => {
+      socket.off("ai_question");
+      socket.off("ai_feedback");
+      socket.off("partial_transcript");
+      socket.off("final_transcript");
+      socket.off("stt_transcript");
+      socket.off("speech_end");
+      socket.off("interview_end");
+      socket.off("stt_status");
+      socket.off("disconnect");
       socket.disconnect();
     };
     // handlers use stable refs for addLine etc; if those ever change you may need to update
@@ -798,7 +807,7 @@ export default function Interview() {
       )}
 
       <div className="min-h-screen bg-background flex flex-col">
-        <Navbar isLoggedIn={true}/>
+        <Navbar isLoggedIn={true} />
 
         <main className="flex-1 pt-20 pb-6 px-4">
           <div className="max-w-6xl mx-auto h-full">
@@ -945,6 +954,8 @@ export default function Interview() {
                   isMuted={isMuted}
                   cameraError={cameraError}
                   phase={phase}
+                  isSarvamListening={isSarvamListening}
+                  sttStatus={sttStatus}
                 />
 
                 {/* Controls */}
@@ -974,28 +985,13 @@ export default function Interview() {
                   </button>
 
                   {/* Context button */}
-                  {isRecording ? (
-                    <button
-                      onClick={submitAnswer}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-200 hover:-translate-y-0.5"
-                      style={{
-                        background: "hsl(var(--gold))",
-                        color: "hsl(var(--background))",
-                        boxShadow: "0 4px 20px hsl(var(--gold)/0.4)",
-                      }}
-                    >
-                      <Mic className="w-4 h-4" />
-                      Done Speaking
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => setShowEndConfirm(true)}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 transition-all duration-200 shadow-[0_4px_20px_hsl(var(--destructive)/0.3)] hover:shadow-[0_6px_28px_hsl(var(--destructive)/0.45)] hover:-translate-y-0.5"
-                    >
-                      <PhoneOff className="w-4 h-4" />
-                      End Interview
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setShowEndConfirm(true)}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 transition-all duration-200 shadow-[0_4px_20px_hsl(var(--destructive)/0.3)] hover:shadow-[0_6px_28px_hsl(var(--destructive)/0.45)] hover:-translate-y-0.5"
+                  >
+                    <PhoneOff className="w-4 h-4" />
+                    End Interview
+                  </button>
 
                   {/* Speaker mute */}
                   <button
