@@ -8,38 +8,27 @@ import {
   PhoneOff,
   Volume2,
   VolumeX,
-  Clock,
   ChevronDown,
   AlertCircle,
-  Loader2,
 } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import Navbar from "../components/LandingPage/Navbar";
 import { io, Socket } from "socket.io-client";
 import { API_BASE } from "../lib/api";
+import type { SessionPhase, TranscriptLine, Speaker } from "../utils/types";
+import AIOrb from "../components/interviewPage/aiWindow";
+import UserVideo from "../components/interviewPage/userWindow";
+import Waveform from "../components/interviewPage/waveform";
+import TranscriptEntry from "../components/interviewPage/TranscriptEntry";
 
 // socket endpoint can be overridden via env, otherwise default to backend host
 const SOCKET_ENDPOINT =
   import.meta.env.VITE_BACKEND_SOCKET ?? "http://localhost:30000";
+const MANUAL_SUBMIT_MODE = true;
 
 // debug connection target
 console.debug("InterviewPage socket endpoint:", SOCKET_ENDPOINT);
-
-// types
-type Speaker = "AI" | "User";
-type SessionPhase =
-  | "connecting"
-  | "ai-speaking"
-  | "user-recording"
-  | "processing"
-  | "ended";
-
-interface TranscriptLine {
-  speaker: Speaker;
-  text: string;
-  time: string;
-}
 
 //Formating time in mm:ss
 function formatTime(s: number): string {
@@ -49,340 +38,21 @@ function formatTime(s: number): string {
   const sec = (s % 60).toString().padStart(2, "0");
   return `${m}:${sec}`;
 }
-//
+
 function elapsedLabel(startedAt: number): string {
   return formatTime(Math.floor((Date.now() - startedAt) / 1000));
 }
 
-/* ─── AI Orb ─── */
-function AIOrb({ phase }: { phase: SessionPhase }) {
-  const isSpeaking = phase === "ai-speaking";
-  const isProcessing = phase === "processing" || phase === "connecting";
-
-  return (
-    <div className="relative flex items-center justify-center w-36 h-36">
-      {isSpeaking && (
-        <>
-          <span className="absolute w-36 h-36 rounded-full border border-primary/20 animate-[ping_1.4s_ease-out_infinite]" />
-          <span className="absolute w-28 h-28 rounded-full border border-primary/30 animate-[ping_1.4s_ease-out_0.3s_infinite]" />
-        </>
-      )}
-      <span
-        className="absolute w-32 h-32 rounded-full"
-        style={{
-          background: isSpeaking
-            ? "radial-gradient(circle, hsl(var(--gold)/0.25) 0%, hsl(var(--primary)/0.08) 60%, transparent 100%)"
-            : "radial-gradient(circle, hsl(var(--primary)/0.12) 0%, transparent 70%)",
-          transition: "background 0.6s ease",
-        }}
-      />
-      <div
-        className="relative z-10 w-20 h-20 rounded-full flex items-center justify-center transition-all duration-500"
-        style={{
-          background: isSpeaking
-            ? "radial-gradient(135deg, hsl(var(--gold)) 0%, hsl(var(--primary)) 60%, hsl(var(--lavender)) 100%)"
-            : isProcessing
-              ? "radial-gradient(135deg, hsl(var(--lavender)/0.8) 0%, hsl(var(--primary)/0.4) 100%)"
-              : "radial-gradient(135deg, hsl(var(--primary)/0.6) 0%, hsl(var(--primary)/0.2) 100%)",
-          boxShadow: isSpeaking
-            ? "0 0 40px hsl(var(--gold)/0.5), 0 0 80px hsl(var(--primary)/0.2)"
-            : "0 0 20px hsl(var(--primary)/0.2)",
-        }}
-      >
-        {isProcessing ? (
-          <Loader2 className="w-7 h-7 text-background animate-spin" />
-        ) : (
-          <Volume2 className="w-7 h-7 text-background" />
-        )}
-      </div>
-
-      {isSpeaking && (
-        <div className="absolute bottom-1 flex items-end gap-0.5">
-          {([3, 5, 8, 5, 3] as number[]).map((h, i) => (
-            <span
-              key={i}
-              className="w-0.75 rounded-full bg-primary/60"
-              style={{
-                height: `${h}px`,
-                animation: `soundBar 0.8s ease-in-out ${i * 0.12}s infinite alternate`,
-              }}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+function nowLabel(): string {
+  return new Date().toLocaleTimeString("en-IN", {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
-// postion :
-//skill :
-// expre
-
-/* ─── Waveform ─── */
-function Waveform({
-  active,
-  color = "hsl(var(--primary)/0.7)",
-  stream = null,
-}: {
-  active: boolean;
-  color?: string;
-  stream?: MediaStream | null;
-}) {
-  const [volume, setVolume] = useState(0);
-
-  useEffect(() => {
-    if (!active || !stream || stream.getAudioTracks().length === 0) {
-      return;
-    }
-
-    const AudioContext =
-      window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContext) return;
-
-    const audioCtx = new AudioContext();
-    const analyser = audioCtx.createAnalyser();
-    const source = audioCtx.createMediaStreamSource(stream);
-
-    source.connect(analyser);
-    analyser.fftSize = 256;
-
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
-    let animationId: number;
-
-    const updateVolume = () => {
-      analyser.getByteFrequencyData(dataArray);
-      let sum = 0;
-      for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
-      const avg = sum / bufferLength;
-
-      // Normalize roughly 0 to 1
-      setVolume(Math.min(1, avg / 60));
-      animationId = requestAnimationFrame(updateVolume);
-    };
-
-    updateVolume();
-
-    return () => {
-      cancelAnimationFrame(animationId);
-      source.disconnect();
-      audioCtx.close().catch(console.error);
-    };
-  }, [active, stream]);
-
-  return (
-    <div className="flex items-center gap-0.75 h-8">
-      {Array.from({ length: 28 }).map((_, i) => {
-        // When streaming microphone input, mix generic animation with the live volume magnitude
-        const randomFactor =
-          0.45 + 0.35 * (Math.sin((i + 1) * 0.75) * 0.5 + 0.5);
-        const baseHeight = active && !stream ? 8 + randomFactor * 22 : 4;
-        const reactiveHeight =
-          stream && active ? 4 + volume * (10 + randomFactor * 20) : baseHeight;
-
-        return (
-          <span
-            key={i}
-            className="rounded-full"
-            style={{
-              width: "3px",
-              background: color,
-              height: `${reactiveHeight}px`,
-              transition: stream ? "height 0.05s ease" : "height 0.15s ease",
-              animation:
-                active && !stream
-                  ? `waveBar 0.5s ease-in-out ${(i % 7) * 0.07}s infinite alternate`
-                  : "none",
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-/* ─── Transcript Entry ─── */
-function TranscriptEntry({
-  speaker,
-  text,
-  time,
-  isLatest,
-}: TranscriptLine & { isLatest: boolean }) {
-  const isAI = speaker === "AI";
-  return (
-    <div className={`flex gap-3 ${isAI ? "" : "flex-row-reverse"}`}>
-      <div
-        className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-[9px] font-mono font-bold mt-0.5 ${
-          isAI
-            ? "bg-primary/20 text-primary border border-primary/30"
-            : "bg-gold/20 text-gold border border-gold/30"
-        }`}
-      >
-        {isAI ? "AI" : "ME"}
-      </div>
-      <div
-        className={`max-w-[82%] ${isAI ? "" : "items-end"} flex flex-col gap-1`}
-      >
-        <div
-          className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-            isAI
-              ? "bg-secondary/60 text-foreground rounded-tl-sm border border-border"
-              : "bg-primary/15 text-secondary-foreground rounded-tr-sm border border-primary/20"
-          } ${isLatest ? "ring-1 ring-primary/20" : ""}`}
-        >
-          {text}
-          {isLatest && isAI && (
-            <span className="inline-block w-1.5 h-4 bg-primary/70 ml-1 rounded-sm animate-[blink_1s_step-end_infinite] align-middle" />
-          )}
-        </div>
-        <span className="text-[10px] text-muted-foreground font-mono px-1">
-          {time}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/* ─── User Video ─── */
-function UserVideo({
-  stream,
-  isMuted,
-  cameraError,
-  phase,
-  isSarvamListening,
-  sttStatus,
-}: {
-  stream: MediaStream | null;
-  isMuted: boolean;
-  cameraError: boolean;
-  phase: SessionPhase;
-  isSarvamListening: boolean;
-  sttStatus: "connected" | "connecting" | "offline";
-}) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const isRecording = phase === "user-recording";
-  const hasVideo =
-    !!stream && stream.getVideoTracks().length > 0 && !cameraError;
-
-  useEffect(() => {
-    if (videoRef.current && stream) videoRef.current.srcObject = stream;
-  }, [stream]);
-
-  return (
-    <div
-      className="relative w-full aspect-4/3 rounded-2xl overflow-hidden border bg-card transition-all duration-300"
-      style={{
-        borderColor: isRecording
-          ? "hsl(var(--gold)/0.5)"
-          : "hsl(var(--border))",
-        boxShadow: isRecording ? "0 0 24px hsl(var(--gold)/0.15)" : "none",
-      }}
-    >
-      <video
-        ref={videoRef}
-        autoPlay
-        muted
-        playsInline
-        className={`absolute inset-0 w-full h-full object-cover scale-x-[-1] transition-opacity duration-500 ${hasVideo ? "opacity-100" : "opacity-0"}`}
-      />
-
-      {!hasVideo && (
-        <>
-          <div
-            className="absolute inset-0"
-            style={{
-              background:
-                "radial-gradient(ellipse at 50% 40%, hsl(var(--gold)/0.06) 0%, hsl(var(--background)) 70%)",
-            }}
-          />
-          <div
-            className="absolute inset-0 opacity-[0.03]"
-            style={{
-              backgroundImage:
-                "repeating-linear-gradient(0deg,transparent,transparent 30px,hsl(var(--border)) 30px,hsl(var(--border)) 31px),repeating-linear-gradient(90deg,transparent,transparent 30px,hsl(var(--border)) 30px,hsl(var(--border)) 31px)",
-            }}
-          />
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <div
-              className="w-24 h-24 rounded-full flex items-center justify-center"
-              style={{
-                background:
-                  "radial-gradient(circle, hsl(var(--gold)/0.15), hsl(var(--card)))",
-                border: "1px solid hsl(var(--gold)/0.2)",
-              }}
-            >
-              <svg viewBox="0 0 64 64" fill="none" className="w-16 h-16">
-                <circle
-                  cx="32"
-                  cy="22"
-                  r="11"
-                  fill="hsl(var(--muted-foreground)/0.3)"
-                />
-                <path
-                  d="M10 56c0-12.15 9.85-22 22-22s22 9.85 22 22"
-                  stroke="hsl(var(--muted-foreground)/0.3)"
-                  strokeWidth="2"
-                  fill="hsl(var(--muted-foreground)/0.15)"
-                />
-              </svg>
-            </div>
-            <p className="text-xs text-muted-foreground font-mono tracking-widest uppercase">
-              {cameraError ? "Camera unavailable" : "Connecting…"}
-            </p>
-          </div>
-        </>
-      )}
-
-      {isRecording && (
-        <span className="absolute inset-0 rounded-2xl border-2 border-gold/40 pointer-events-none animate-[ping_1.5s_ease-out_infinite]" />
-      )}
-
-      <div className="absolute bottom-0 left-0 right-0 px-4 py-3 flex items-center justify-between bg-linear-to-t from-background/80 to-transparent">
-        <div className="flex items-center gap-2">
-          <span
-            className={`w-2 h-2 rounded-full ${isRecording ? "bg-gold" : "bg-accent"} animate-pulse`}
-          />
-          <span className="text-[11px] text-muted-foreground font-mono">
-            {isRecording ? "Listening…" : "You"}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {isRecording && (
-            <Badge className="text-[9px] h-5 px-2 border-gold/30 bg-gold/15 text-gold">
-              <Mic className="w-2.5 h-2.5 mr-1" /> Live
-            </Badge>
-          )}
-          {isSarvamListening && (
-            <Badge className="text-[9px] h-5 px-2 border-primary/30 bg-primary/15 text-primary">
-              STT
-            </Badge>
-          )}
-
-          {sttStatus === "connecting" && (
-            <Badge className="text-[9px] h-5 px-2 border-amber-300/30 bg-amber-300/15 text-amber-500">
-              STT Reconnecting
-            </Badge>
-          )}
-
-          {sttStatus === "offline" && (
-            <Badge variant="destructive" className="text-[9px] h-5 px-2">
-              STT Offline
-            </Badge>
-          )}
-
-          {isMuted && (
-            <Badge variant="destructive" className="text-[9px] h-5 px-2">
-              <MicOff className="w-2.5 h-2.5 mr-1" /> Muted
-            </Badge>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Phase label ─── */
+// Phase labels
 function phaseLabel(phase: SessionPhase): string {
   switch (phase) {
     case "connecting":
@@ -398,15 +68,12 @@ function phaseLabel(phase: SessionPhase): string {
   }
 }
 
-/* ════════════════════════════════════════
-   Main Interview Page
-════════════════════════════════════════ */
 export default function Interview() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   // id initially holds applicationId; we convert to interviewId after calling backend
-  const [interviewId, setInterviewId] = useState<string | null>(null);
+  const [interviewId, setInterviewId] = useState(null);
   const fetchRef = useRef(false);
 
   // kick off interview process on mount
@@ -440,13 +107,19 @@ export default function Interview() {
 
   /* session */
   const [phase, setPhase] = useState<SessionPhase>("connecting");
-  const [elapsed, setElapsed] = useState(0);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
-  const [liveAnswer, setLiveAnswer] = useState(""); // interim STT text
+  const [liveAnswer, setLiveAnswer] = useState("");
   const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [sttStatus, setSttStatus] = useState<
     "connected" | "connecting" | "offline"
   >("connecting");
+  const [voiceTrackEvents, setVoiceTrackEvents] = useState<
+    { at: string; event: string; detail?: string }[]
+  >([]);
+  const [partialCount, setPartialCount] = useState(0);
+  const [finalCount, setFinalCount] = useState(0);
+  const [lastTranscriptPreview, setLastTranscriptPreview] = useState("");
+  const [micLevel, setMicLevel] = useState(0);
 
   /* refs */
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -454,28 +127,61 @@ export default function Interview() {
   const recognitionRef = useRef<any>(null);
   const speakerMutedRef = useRef(false);
   const finalAnswerRef = useRef(""); // final STT transcript
+  const finalAudioRef = useRef<{ audioBase64: string; mimeType: string } | null>(null);
+  const lastCommittedUserTextRef = useRef("");
   const socketRef = useRef<Socket | null>(null);
+  const isSubmittingRef = useRef(false); // to prevent multiple submits
+  const isRecordingRef = useRef(false);
+  const autoSubmitPendingRef = useRef(false);
 
   const {
     isListening: isSarvamListening,
     start: startSarvam,
     stop: stopSarvam,
-  } = useSarvamSTT(socketRef.current, interviewId);
+  } = useSarvamSTT(socketRef.current, interviewId, stream, {
+    silenceDurationMs: MANUAL_SUBMIT_MODE ? 120000 : 7000,
+    isMicMuted: isMuted,
+    minRecordingMs: MANUAL_SUBMIT_MODE ? 6000 : 4000,
+    minSpeechMs: MANUAL_SUBMIT_MODE ? 1500 : 1200,
+    minAudioBytes: 2500,
+    noSpeechTimeoutMs: MANUAL_SUBMIT_MODE ? 120000 : 14000,
+    maxRecordingMs: MANUAL_SUBMIT_MODE ? 120000 : 30000,
+    onFinalAudio: (audioBase64: string, mimeType: string) => {
+      finalAudioRef.current = { audioBase64, mimeType };
+      trackVoiceEvent("final_audio_captured", `bytes≈${Math.floor(audioBase64.length * 0.75)}`);
+    },
+    onMicNoSignal: () => {
+      setError("Microphone signal not detected. Check browser mic input device and OS mic permissions.");
+      trackVoiceEvent("mic_no_signal");
+    },
+    onAudioLevel: (rms: number) => {
+      setMicLevel(rms);
+    },
+    onSilenceDetected: () => {
+      if (isSubmittingRef.current || !isRecordingRef.current) return;
+      autoSubmitPendingRef.current = true;
+      isRecordingRef.current = false;
+    },
+  });
+
   const [error, setError] = useState<string | null>(null);
   const startListeningRef = useRef<() => void>(() => {});
   const endSessionRef = useRef<() => void>(() => {});
-  const submitAnswerRef = useRef<() => void>(() => {});
+  const submitAnswerRef = useRef<
+    (answerOverride?: string, options?: { skipStop?: boolean }) => void
+  >(() => {});
+
+  const trackVoiceEvent = useCallback((event: string, detail?: string) => {
+    setVoiceTrackEvents((prev) => {
+      const next = [{ at: nowLabel(), event, detail }, ...prev];
+      return next.slice(0, 10);
+    });
+  }, []);
 
   /* keep refs in sync */
   useEffect(() => {
     speakerMutedRef.current = speakerMuted;
   }, [speakerMuted]);
-
-  /* ── timer ── */
-  useEffect(() => {
-    const t = setInterval(() => setElapsed((s) => s + 1), 1000);
-    return () => clearInterval(t);
-  }, []);
 
   /* ── auto-scroll ── */
   useEffect(() => {
@@ -498,11 +204,10 @@ export default function Interview() {
       stream?.getTracks().forEach((t) => t.stop());
       window.speechSynthesis?.cancel();
       recognitionRef.current?.abort();
-      stopSarvam();
+      stopSarvam({ emitFinal: false });
     };
   }, [stream, stopSarvam]);
 
-  /* ── add a line to transcript ── */
   const addLine = useCallback((speaker: Speaker, text: string) => {
     setTranscript((prev) => [
       ...prev,
@@ -510,9 +215,7 @@ export default function Interview() {
     ]);
   }, []);
 
-  /* ══════════════════════════════════
-     SPEAK — Callback for AI text/audio
-  ══════════════════════════════════ */
+  // SPEAK — Callback for AI text/audio
   const playAudioBase64 = useCallback((base64: string, onDone: () => void) => {
     if (speakerMutedRef.current) {
       onDone();
@@ -548,80 +251,111 @@ export default function Interview() {
     window.speechSynthesis.speak(u);
   }, []);
 
-  /* ══════════════════════════════════
-     START USER RECORDING (STT)
-  ══════════════════════════════════ */
+  //  START USER RECORDING (STT)
   const startListening = useCallback(() => {
+    setIsMuted(false);
     setPhase("user-recording");
     setLiveAnswer("");
     finalAnswerRef.current = "";
-
-    stopSarvam();
+    finalAudioRef.current = null;
+    autoSubmitPendingRef.current = false;
+    isRecordingRef.current = true;
+    trackVoiceEvent("recording_started");
     startSarvam();
-  }, [startSarvam, stopSarvam]);
+  }, [startSarvam, trackVoiceEvent]);
 
-  /* ══════════════════════════════════
-     STOP & SUBMIT user's answer
-  ══════════════════════════════════ */
-  const submitAnswer = useCallback(async () => {
+  //  SUBMIT user's answer
+  const submitAnswer = useCallback(async (answerOverride?: string, options?: { skipStop?: boolean }) => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    isRecordingRef.current = false;
+    trackVoiceEvent("recording_stopped");
     recognitionRef.current?.stop();
     recognitionRef.current = null;
-    stopSarvam();
+    if (!options?.skipStop) {
+      stopSarvam({ emitFinal: true });
+      await new Promise((r) => setTimeout(r, 300));
+    }
 
-    const answer = (finalAnswerRef.current || liveAnswer).trim();
-    if (!answer) {
+    const answer = (answerOverride || finalAnswerRef.current || liveAnswer).trim();
+    const hasFinalAudio = !!finalAudioRef.current?.audioBase64;
+    const finalAudioBytes = finalAudioRef.current?.audioBase64
+      ? Math.floor(finalAudioRef.current.audioBase64.length * 0.75)
+      : 0;
+
+    if (hasFinalAudio && finalAudioBytes < 2500) {
+      setError("Captured audio is too short/quiet. Please speak a bit longer and try again.");
+      trackVoiceEvent("submit_blocked_small_audio", `bytes=${finalAudioBytes}`);
+      autoSubmitPendingRef.current = false;
+      isSubmittingRef.current = false;
+      setPhase("user-recording");
+      startSarvam();
+      return;
+    }
+
+    if (!answer && !hasFinalAudio) {
       setError("No transcript available to submit.");
+      trackVoiceEvent("submit_skipped", "no transcript available");
+      autoSubmitPendingRef.current = false;
+      isSubmittingRef.current = false;
       return;
     }
 
     setLiveAnswer("");
-    addLine("User", answer);
+    autoSubmitPendingRef.current = false;
+    if (answer) {
+      addLine("User", answer);
+      lastCommittedUserTextRef.current = answer;
+    }
     setPhase("processing");
 
     try {
+      trackVoiceEvent("answer_submitted", `chars=${answer.length}`);
       socketRef.current?.emit("send_answer", {
         interviewId: interviewId ?? id,
-        answer,
+        answer: answer || undefined,
+        audioBase64: finalAudioRef.current?.audioBase64,
+        mimeType: finalAudioRef.current?.mimeType,
       });
+      finalAudioRef.current = null;
     } catch {
       setError("Failed to submit answer. Please check your connection.");
+      trackVoiceEvent("submit_error");
       setPhase("user-recording");
+      isSubmittingRef.current = false;
     }
-  }, [id, interviewId, liveAnswer, addLine, stopSarvam]);
+  }, [id, interviewId, liveAnswer, addLine, stopSarvam, trackVoiceEvent, startSarvam]);
 
   useEffect(() => {
     submitAnswerRef.current = submitAnswer;
   }, [submitAnswer]);
 
-  /* ══════════════════════════════════
-     START SESSION — POST /start
-  ══════════════════════════════════ */
+  //start session
   const startSession = useCallback(async () => {
     setPhase("connecting");
     // nothing else; joining is handled in separate effect when interviewId arrives
   }, []);
 
   /* ── auto-submit on silence ── */
-  useEffect(() => {
-    if (phase !== "user-recording") return;
+  // useEffect(() => {
+  //   if (phase !== "user-recording") return;
 
-    // Auto-submit after 4 seconds of silence, but only if they've explicitly started talking
-    if (liveAnswer.trim().length > 0) {
-      const timeout = setTimeout(() => {
-        submitAnswer();
-      }, 4000);
-      return () => clearTimeout(timeout);
-    }
-  }, [liveAnswer, phase, submitAnswer]);
+  //   // Auto-submit after 4 seconds of silence, but only if they've explicitly started talking
+  //   if (liveAnswer.trim().length > 0) {
+  //     const timeout = setTimeout(() => {
+  //       submitAnswer();
+  //     }, 4000);
+  //     return () => clearTimeout(timeout);
+  //   }
+  // }, [liveAnswer, phase, submitAnswer]);
 
-  /* ══════════════════════════════════
-     END SESSION — GET /summary
-  ══════════════════════════════════ */
+  //end session and navigate to jobs page
   const endSession = useCallback(() => {
     window.speechSynthesis?.cancel();
     recognitionRef.current?.abort();
     recognitionRef.current = null;
-    stopSarvam();
+    // Session termination should not trigger an extra STT turn.
+    stopSarvam({ emitFinal: false });
     stream?.getTracks().forEach((t) => t.stop());
     setPhase("ended");
     navigate(`/jobs`);
@@ -640,6 +374,7 @@ export default function Interview() {
 
     socket.on("connect", () => {
       console.log("Interview Socket Connected:", socket.id);
+      trackVoiceEvent("socket_connected");
     });
 
     socket.on(
@@ -647,7 +382,9 @@ export default function Interview() {
       (payload: { question: string; audio?: string; isEnd?: boolean }) => {
         if (!payload?.question) return;
         addLine("AI", payload.question);
+        trackVoiceEvent("ai_question_received");
         setPhase("ai-speaking");
+        isSubmittingRef.current = false;
         if (payload.audio) {
           playAudioBase64(payload.audio, () => {
             if (payload.isEnd) {
@@ -677,38 +414,85 @@ export default function Interview() {
       if (!data?.text) return;
       setLiveAnswer(data.text);
       finalAnswerRef.current = data.text;
+      setPartialCount((c) => c + 1);
+      setLastTranscriptPreview(data.text);
+      trackVoiceEvent("partial_transcript", data.text.slice(0, 80));
     });
 
     socket.on("final_transcript", (text: string) => {
-      if (!text) return;
-      setLiveAnswer(text);
-      finalAnswerRef.current = text;
+      if (text) {
+        setLiveAnswer(text);
+        finalAnswerRef.current = text;
+        setFinalCount((c) => c + 1);
+        setLastTranscriptPreview(text);
+        trackVoiceEvent("final_transcript", text.slice(0, 80));
+      } else {
+        trackVoiceEvent("final_transcript_empty");
+      }
+      if (autoSubmitPendingRef.current) {
+        autoSubmitPendingRef.current = false;
+        submitAnswerRef.current(text || undefined, { skipStop: true });
+      }
     });
 
     socket.on("stt_transcript", (text: string) => {
-      if (!text) return;
-      setLiveAnswer(text);
-      finalAnswerRef.current = text;
+      if (text) {
+        setLiveAnswer(text);
+        finalAnswerRef.current = text;
+        setFinalCount((c) => c + 1);
+        setLastTranscriptPreview(text);
+        trackVoiceEvent("stt_transcript", text.slice(0, 80));
+      } else {
+        trackVoiceEvent("stt_transcript_empty");
+      }
+      if (autoSubmitPendingRef.current) {
+        autoSubmitPendingRef.current = false;
+        submitAnswerRef.current(text || undefined, { skipStop: true });
+      }
     });
 
     socket.on("speech_end", () => {
+      if (isSubmittingRef.current) return;
+      trackVoiceEvent("speech_end_received");
       submitAnswerRef.current();
     });
 
+    socket.on("stt_error", () => {
+      trackVoiceEvent("stt_error");
+      autoSubmitPendingRef.current = false;
+      isSubmittingRef.current = false;
+      isRecordingRef.current = false;
+    });
+
+    socket.on("user_transcript", (payload: { text: string }) => {
+      const text = (payload?.text || "").trim();
+      if (!text) return;
+      setLiveAnswer(text);
+      finalAnswerRef.current = text;
+      if (text !== lastCommittedUserTextRef.current) {
+        addLine("User", text);
+        lastCommittedUserTextRef.current = text;
+      }
+    });
+
     socket.on("interview_end", () => {
-      endSessionRef.current();
+      setTimeout(() => {
+        endSessionRef.current();
+      }, 15000);
     });
 
     socket.on(
       "stt_status",
       (status: "connected" | "connecting" | "offline") => {
         setSttStatus(status);
+        trackVoiceEvent("stt_status", status);
       },
     );
 
     socket.on("disconnect", () => {
       console.log("Interview socket disconnected");
       setSttStatus("offline");
+      trackVoiceEvent("socket_disconnected");
     });
 
     return () => {
@@ -718,13 +502,21 @@ export default function Interview() {
       socket.off("final_transcript");
       socket.off("stt_transcript");
       socket.off("speech_end");
+      socket.off("stt_error");
+      socket.off("user_transcript");
       socket.off("interview_end");
       socket.off("stt_status");
       socket.off("disconnect");
       socket.disconnect();
     };
     // handlers use stable refs for addLine etc; if those ever change you may need to update
-  }, [addLine, speak, playAudioBase64]);
+  }, [addLine, speak, playAudioBase64, trackVoiceEvent]);
+
+  useEffect(() => {
+    if (isSarvamListening) {
+      trackVoiceEvent("frontend_listening");
+    }
+  }, [isSarvamListening, trackVoiceEvent]);
 
   /* ── when we know the interviewId, tell server to join ── */
   useEffect(() => {
@@ -784,15 +576,6 @@ export default function Interview() {
 
   return (
     <>
-      <style>{`
-        @keyframes soundBar  { from{transform:scaleY(.4)} to{transform:scaleY(1.4)} }
-        @keyframes waveBar   { from{transform:scaleY(.3);opacity:.5} to{transform:scaleY(1);opacity:1} }
-        @keyframes blink     { 0%,100%{opacity:1} 50%{opacity:0} }
-        @keyframes fadeSlideUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
-        .transcript-entry    { animation: fadeSlideUp .35s ease both; }
-      `}</style>
-
-      {/* Error banner */}
       {error && (
         <div className="fixed top-0 inset-x-0 z-50 flex items-center gap-2 bg-destructive/90 text-destructive-foreground text-sm px-6 py-3 backdrop-blur-sm">
           <AlertCircle className="w-4 h-4 shrink-0" />
@@ -815,10 +598,6 @@ export default function Interview() {
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
                 <div className="apex-tag">Live Session</div>
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground font-mono">
-                  <Clock className="w-3.5 h-3.5" />
-                  {formatTime(elapsed)}
-                </div>
               </div>
               <div className="flex items-center gap-2">
                 <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -871,7 +650,9 @@ export default function Interview() {
                         ? (transcript.findLast?.((t) => t.speaker === "AI")
                             ?.text ?? "Preparing question…")
                         : isRecording
-                          ? "Speak your answer clearly, then press Done Speaking."
+                          ? (MANUAL_SUBMIT_MODE
+                              ? "Speak your answer, then click Done Speaking."
+                              : "Speak your answer clearly. We auto-submit after silence.")
                           : phase === "processing"
                             ? "Submitting your answer…"
                             : phase === "connecting"
@@ -895,9 +676,6 @@ export default function Interview() {
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[10px] tracking-widest uppercase text-primary">
                         Transcript
-                      </span>
-                      <span className="text-[10px] text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
-                        {transcript.length} exchanges
                       </span>
                     </div>
                     <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
@@ -958,6 +736,60 @@ export default function Interview() {
                   sttStatus={sttStatus}
                 />
 
+                <div className="rounded-2xl border border-border bg-card p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-mono tracking-widest uppercase text-primary">
+                      Voice Tracker
+                    </h3>
+                    <Badge variant="outline" className="text-[10px]">
+                      {phaseLabel(phase)}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] mb-3">
+                    <div className="rounded-md bg-secondary/50 px-2 py-1.5">
+                      Recording:{" "}
+                      <span className="font-semibold">
+                        {phase === "user-recording" ? "yes" : "no"}
+                      </span>
+                    </div>
+                    <div className="rounded-md bg-secondary/50 px-2 py-1.5">
+                      Listening:{" "}
+                      <span className="font-semibold">
+                        {isSarvamListening ? "yes" : "no"}
+                      </span>
+                    </div>
+                    <div className="rounded-md bg-secondary/50 px-2 py-1.5">
+                      Partial: <span className="font-semibold">{partialCount}</span>
+                    </div>
+                    <div className="rounded-md bg-secondary/50 px-2 py-1.5">
+                      Final: <span className="font-semibold">{finalCount}</span>
+                    </div>
+                    <div className="rounded-md bg-secondary/50 px-2 py-1.5 col-span-2">
+                      Mic RMS: <span className="font-semibold">{micLevel.toFixed(6)}</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-2">
+                    Last transcript: {lastTranscriptPreview || "N/A"}
+                  </p>
+                  <div className="space-y-1 max-h-28 overflow-auto pr-1">
+                    {voiceTrackEvents.length === 0 ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        Waiting for voice events...
+                      </p>
+                    ) : (
+                      voiceTrackEvents.map((item, idx) => (
+                        <div
+                          key={`${item.at}-${item.event}-${idx}`}
+                          className="text-[11px] text-muted-foreground"
+                        >
+                          [{item.at}] {item.event}
+                          {item.detail ? `: ${item.detail}` : ""}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
                 {/* Controls */}
                 <div
                   className="rounded-2xl border border-border bg-card p-4 flex items-center justify-center gap-3"
@@ -985,6 +817,16 @@ export default function Interview() {
                   </button>
 
                   {/* Context button */}
+                  {isRecording && (
+                    <button
+                      onClick={() => submitAnswerRef.current()}
+                      disabled={isSubmittingRef.current}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      Done Speaking
+                    </button>
+                  )}
+
                   <button
                     onClick={() => setShowEndConfirm(true)}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 transition-all duration-200 shadow-[0_4px_20px_hsl(var(--destructive)/0.3)] hover:shadow-[0_6px_28px_hsl(var(--destructive)/0.45)] hover:-translate-y-0.5"
@@ -1009,37 +851,6 @@ export default function Interview() {
                       <Volume2 className="w-4 h-4" />
                     )}
                   </button>
-                </div>
-
-                {/* Session info */}
-                <div className="rounded-2xl border border-border bg-card px-5 py-4 space-y-3">
-                  <h4 className="font-mono text-[10px] tracking-widest uppercase text-primary">
-                    Session Info
-                  </h4>
-                  <div className="space-y-2">
-                    {[
-                      { label: "Application", value: `#${id}` },
-                      {
-                        label: "Questions",
-                        value: `${transcript.filter((t) => t.speaker === "AI").length} asked`,
-                      },
-                      {
-                        label: "Answers",
-                        value: `${transcript.filter((t) => t.speaker === "User").length} given`,
-                      },
-                      { label: "Duration", value: formatTime(elapsed) },
-                    ].map(({ label, value }) => (
-                      <div
-                        key={label}
-                        className="flex items-center justify-between text-sm"
-                      >
-                        <span className="text-muted-foreground">{label}</span>
-                        <span className="text-secondary-foreground font-medium">
-                          {value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </div>
             </div>
