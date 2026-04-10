@@ -7,7 +7,7 @@ import { loadResume } from '../../ai/loader/resume.loader';
 import { generateInterviewSetup } from '../../ai/chain/generateInterviewSetup.chain';
 import Job from '../models/Job';
 import User from '../models/User';
-import { startInterview as startTextInterview, processTextAnswer } from '../../ai/services/interview.services';
+import { startInterview as startTextInterview } from '../../ai/services/interview.services';
 
 
 export const startInterview = async (req: Request, res: Response): Promise<void> => {

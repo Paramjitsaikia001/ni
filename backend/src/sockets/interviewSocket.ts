@@ -6,6 +6,18 @@ import { speechToText } from '../../ai/chain/sarvamSTT.chain';
 import { SarvamAIClient } from 'sarvamai';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+
+const toQuestionText = (q: unknown): string => {
+  if (typeof q === 'string') return q;
+  if (q && typeof q === 'object') {
+    const obj = q as Record<string, unknown>;
+    if (typeof obj.text === 'string') return obj.text;
+    if (typeof obj.question === 'string') return obj.question;
+    if (typeof obj.prompt === 'string') return obj.prompt;
+  }
+  return "";
+};
 
 /**
  * Handles the real-time interview logic via WebSockets.
@@ -43,8 +55,11 @@ export const setupInterviewSocket = (io: Server) => {
 
     // Real-time REST-based STT buffering state per socket
     let audioChunks: Buffer[] = [];
+    let bufferedMimeType = "audio/webm";
     let lastProcessTime = Date.now();
     let partialTranscript = "";
+    let lastFinalStt: { audioHash: string; transcript: string } | null = null;
+    let pendingFinalStt: { audioHash: string; promise: Promise<string> } | null = null;
 
     const closeSarvamSocket = () => {
       if (sarvamSocket) {
@@ -106,9 +121,10 @@ export const setupInterviewSocket = (io: Server) => {
         }
 
         sarvamSocket = await sarvamClient.speechToTextStreaming.connect({
-          model: "saaras:v2.5",
+          model: "saaras:v3",
+          mode: "transcribe",
           "language-code": "en-IN",
-          "Api-Subscription-Key": process.env.SARVAM_API_KEY || "",
+          high_vad_sensitivity: "true"
         });
 
         sarvamSocket.on("error", (err: any) => {
@@ -212,100 +228,61 @@ export const setupInterviewSocket = (io: Server) => {
 
     socket.on("audio_chunk", async (data: { interviewId: string; audio: string; mimeType?: string }) => {
       const { interviewId, audio, mimeType } = data;
-      if (!interviewId || !audio) {
-        return;
-      }
+      if (!interviewId || !audio) return;
 
-      // Append the incoming chunk to buffer
+      // ✅ Only store chunks (no STT processing here)
       const chunkBuffer = Buffer.from(audio, "base64");
       audioChunks.push(chunkBuffer);
-
-      const now = Date.now();
-      if (now - lastProcessTime > 2000) {
-        lastProcessTime = now;
-
-        const batches = audioChunks;
-        audioChunks = [];
-
-        if (batches.length === 0) {
-          return;
-        }
-
-        const sttMimeType = mimeType || "audio/webm";
-
-        let partialChunkText = "";
-
-        // 1) Try combined audio first (for better context)
-        if (Buffer.concat(batches).length >= 2000) {
-          try {
-            const combinedText = await speechToText(Buffer.concat(batches), sttMimeType);
-            if (combinedText && combinedText.trim().length > 0) {
-              partialChunkText = combinedText.trim();
-            }
-          } catch (combinedErr) {
-            console.warn("Chunk STT combined processing failed, trying per-chunk:", String(combinedErr));
-          }
-        }
-
-        // 2) Fallback per-chunk when combined audio fails or too short
-        if (!partialChunkText) {
-          for (const batch of batches) {
-            if (batch.length < 2000) continue;
-            try {
-              const chunkText = await speechToText(batch, sttMimeType);
-              if (chunkText && chunkText.trim().length > 0) {
-                partialChunkText = `${partialChunkText} ${chunkText}`.trim();
-              }
-            } catch (chunkErr) {
-              console.warn("Chunk STT individual chunk failed:", String(chunkErr));
-              continue;
-            }
-          }
-        }
-
-        if (!partialChunkText) {
-          return;
-        }
-
-        partialTranscript = `${partialTranscript} ${partialChunkText}`.trim();
-
-        socket.emit("partial_transcript", {
-          text: partialTranscript,
-        });
-
-        // Keep legacy fallback event for compatibility
-        socket.emit("stt_transcript", partialTranscript);
+      if (mimeType) {
+        bufferedMimeType = mimeType;
       }
     });
 
-    socket.on("final_answer", async (data: { interviewId: string }) => {
-      const { interviewId } = data;
+    socket.on("final_answer", async (data: { interviewId: string; audioBase64?: string; mimeType?: string }) => {
+      const { interviewId, audioBase64, mimeType } = data;
       if (!interviewId) {
         socket.emit("stt_error", { error: "Missing interviewId for final_answer" });
         return;
       }
 
       try {
-        const finalBuffer = audioChunks.length > 0 ? Buffer.concat(audioChunks) : Buffer.alloc(0);
+        const finalBuffer = audioBase64
+          ? Buffer.from(audioBase64, "base64")
+          : (audioChunks.length > 0 ? Buffer.concat(audioChunks) : Buffer.alloc(0));
+        const finalMimeType = mimeType || bufferedMimeType || "audio/webm";
+        const finalAudioHash = crypto.createHash("sha256").update(finalBuffer).digest("hex");
         audioChunks = [];
+        bufferedMimeType = "audio/webm";
+        console.log("Final STT payload", { bytes: finalBuffer.length, mimeType: finalMimeType, socketId: socket.id });
 
-        let finalText = partialTranscript.trim();
-
-        if (finalBuffer.length >= 2000) {
-          const chunkText = await speechToText(finalBuffer, "audio/webm");
-          if (chunkText && chunkText.trim().length > 0) {
-            finalText = `${finalText} ${chunkText}`.trim();
+        let finalText = "";
+        const finalSttPromise = (async () => {
+          if (finalBuffer.length > 0) {
+            return await speechToText(finalBuffer, finalMimeType);
           }
-        }
+          console.log("Skipping STT due to empty audio payload", { bytes: finalBuffer.length, socketId: socket.id });
+          return "";
+        })();
+        pendingFinalStt = {
+          audioHash: finalAudioHash,
+          promise: finalSttPromise,
+        };
+        finalText = await finalSttPromise;
+
+        lastFinalStt = {
+          audioHash: finalAudioHash,
+          transcript: finalText || "",
+        };
+        pendingFinalStt = null;
 
         socket.emit("final_transcript", finalText);
         socket.emit("stt_transcript", finalText);
       } catch (err) {
         console.error("Final STT error:", err);
+        pendingFinalStt = null;
         socket.emit("stt_error", { error: "Final STT REST call failed" });
       } finally {
         audioChunks = [];
-        partialTranscript = "";
         lastProcessTime = Date.now();
       }
     });
@@ -322,6 +299,7 @@ export const setupInterviewSocket = (io: Server) => {
           if (audioBase64) {
             try {
               const buffer = Buffer.from(audioBase64, 'base64');
+              const audioHash = crypto.createHash("sha256").update(buffer).digest("hex");
 
               // Save audio to uploads/user-ans/
               const ext = (mimeType || "audio/webm").includes("mp3") ? "mp3" : (mimeType || "").includes("wav") ? "wav" : "webm";
@@ -333,10 +311,21 @@ export const setupInterviewSocket = (io: Server) => {
               fs.writeFileSync(path.join(ansDir, filename), buffer);
               console.log(`💾 Saved user audio answer to: uploads/user-ans/${filename}`);
 
-              const sttText = await speechToText(buffer, mimeType || "audio/webm");
-              if (sttText) {
-                transcript = sttText;
-                console.log(`🎙️  STT Transcript: "${sttText}"`);
+              const canReuseFinalStt = !!lastFinalStt && lastFinalStt.audioHash === audioHash;
+              const canAwaitPendingFinalStt = !!pendingFinalStt && pendingFinalStt.audioHash === audioHash;
+              if (canReuseFinalStt) {
+                transcript = lastFinalStt?.transcript || transcript;
+                console.log("♻️ Reused final_answer STT result for send_answer");
+              } else if (canAwaitPendingFinalStt) {
+                const pendingText = await pendingFinalStt!.promise;
+                transcript = pendingText || transcript;
+                console.log("⏳ Awaited pending final_answer STT result for send_answer");
+              } else if (!transcript || transcript.trim().length === 0) {
+                const sttText = await speechToText(buffer, mimeType || "audio/webm");
+                if (sttText) {
+                  transcript = sttText;
+                  console.log(`🎙️  STT Transcript: "${sttText}"`);
+                }
               }
             } catch (err) {
               console.error("STT Error:", err);
@@ -358,6 +347,35 @@ export const setupInterviewSocket = (io: Server) => {
           const roomKey = interviewId;
 
           const currentIndex = interviewDoc.answers.length;
+          const currentQuestion = interviewDoc.questions[currentIndex];
+          const currentQuestionText = typeof currentQuestion === 'string'
+            ? currentQuestion
+            : (currentQuestion as any)?.text || String(currentQuestion || "");
+
+          if (!transcript || transcript.trim().length === 0) {
+            const retryText = "I could not hear your answer clearly. Please repeat your response.";
+            try {
+              const retryAudioBuffer = await sarvamTTS(`${retryText} ${currentQuestionText}`);
+              io.to(roomKey).emit('ai_feedback', {
+                feedback: retryText
+              });
+              io.to(roomKey).emit('ai_question', {
+                question: currentQuestionText,
+                audio: retryAudioBuffer.toString('base64')
+              });
+            } catch {
+              io.to(roomKey).emit('ai_feedback', {
+                feedback: retryText
+              });
+              io.to(roomKey).emit('ai_question', {
+                question: currentQuestionText
+              });
+            }
+            return;
+          }
+
+          // Send the final transcript actually used for evaluation back to client.
+          socket.emit("user_transcript", { text: transcript });
 
           const interviewState = {
             interviewId,
@@ -365,9 +383,11 @@ export const setupInterviewSocket = (io: Server) => {
             currentIndex
           };
 
-          const result = await processTextAnswer(interviewState, transcript);
+          const result = await processTextAnswer(currentQuestionText,interviewState, transcript);
 
           console.log(`\n==================== AI EVALUATION ====================`);
+          console.log(`Question: ${currentQuestionText}`);
+          console.log(`Candidate Answer: ${transcript}`);
           console.log(`Answer Score: ${result.score}/10`);
           console.log(`Feedback: ${result.feedback}`);
           console.log(`=======================================================\n`);
@@ -386,10 +406,12 @@ export const setupInterviewSocket = (io: Server) => {
 
           await interviewDoc.save();
 
-          if (!isCompleted && result.nextQuestion) {
+          const nextQuestionText = toQuestionText(result.nextQuestion);
+
+          if (!isCompleted && nextQuestionText) {
             try {
               // Combine feedback and next question so AI speaks both
-              const combinedText = `${result.feedback} ${result.nextQuestion}`;
+              const combinedText = `${result.feedback} ${nextQuestionText}`;
               const nextAudioBuffer = await sarvamTTS(combinedText);
 
               // Emit to the exact room the client joined
@@ -398,7 +420,7 @@ export const setupInterviewSocket = (io: Server) => {
               });
 
               io.to(roomKey).emit('ai_question', {
-                question: result.nextQuestion,
+                question: nextQuestionText,
                 audio: nextAudioBuffer.toString('base64')
               });
             } catch (err) {
@@ -407,7 +429,7 @@ export const setupInterviewSocket = (io: Server) => {
                 feedback: result.feedback
               });
               io.to(roomKey).emit('ai_question', {
-                question: result.nextQuestion
+                question: nextQuestionText
               });
             }
           }
