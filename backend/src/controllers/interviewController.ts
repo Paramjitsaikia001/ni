@@ -7,7 +7,7 @@ import { loadResume } from '../../ai/loader/resume.loader';
 import { generateInterviewSetup } from '../../ai/chain/generateInterviewSetup.chain';
 import Job from '../models/Job';
 import User from '../models/User';
-import { startInterview as startTextInterview, processTextAnswer } from '../../ai/services/interview.services';
+import { startInterview as startTextInterview } from '../../ai/services/interview.services';
 
 
 export const startInterview = async (req: Request, res: Response): Promise<void> => {
@@ -18,6 +18,27 @@ export const startInterview = async (req: Request, res: Response): Promise<void>
     const application = await Application.findById(applicationId).populate('jobId');
     if (!application || !application.jobId) {
       res.status(404).json({ success: false, message: 'Application or Job not found' });
+      return;
+    }
+
+    // Reuse an existing in-progress interview for this application (idempotent start).
+    const existingInterview = await Interview.findOne({ applicationId: application._id }).sort({ createdAt: -1 });
+    if (
+      existingInterview &&
+      Array.isArray(existingInterview.questions) &&
+      existingInterview.questions.length > 0 &&
+      Array.isArray(existingInterview.answers) &&
+      existingInterview.answers.length < existingInterview.questions.length
+    ) {
+      const currentIndex = existingInterview.answers.length;
+      const firstQuestion = existingInterview.questions[currentIndex] || existingInterview.questions[0];
+      res.status(200).json({
+        success: true,
+        question: firstQuestion,
+        applicationId: application._id,
+        interviewId: existingInterview._id,
+        reused: true
+      });
       return;
     }
 
@@ -97,87 +118,37 @@ console.log("job des ",jobdetails.description);
   }
 };
 
-/**
- * @desc    Submit an answer, get AI evaluation, and the next question
- * @route   POST /api/interview/submit
- */
-// export const submitAnswer = async (req: Request, res: Response): Promise<void> => {
-//   try {
-//     const { applicationId, answer } = req.body;
 
-//     const application = await Application.findById(applicationId).populate('jobId');
-//     if (!application) {
-//       res.status(404).json({ success: false, message: 'Application not found' });
-//       return;
-//     }
+export const getAllInterviewResult = async (req:Request, res:Response) => {
+  try {
+    const { id } = req.params;
 
-//     const currentQuestionIndex = application.interviewData.length - 1;
-//     const currentQuestion = application.interviewData[currentQuestionIndex].question;
+    const interview = await Interview;
 
-//     // AI evaluate the current answer and generate next question
-//     const aiResult = await evaluateAndContinue(
-//       currentQuestion, 
-//       answer, 
-//       (application.jobId as any).description
-//     );
+    if (!interview) {
+      return res.status(404).json({ message: "Interview not found" });
+    }
 
-//     // Update the current round with AI results
-//     application.interviewData[currentQuestionIndex].answer = answer;
-//     application.interviewData[currentQuestionIndex].score = aiResult.score;
-//     application.interviewData[currentQuestionIndex].evaluation = aiResult.feedback;
+    // // clean output
+    // const result = {
+    //   applicationId: interview.applicationId,
+    //   totalQuestions: interview.questions.length,
+    //   averageScore:
+    //     interview.finalScores.reduce((a, b) => a + b, 0) /
+    //     (interview.finalScores.length || 1),
 
-//     // Logic: End interview after 5 questions
-//     if (application.interviewData.length >= 5) {
-//       application.status = 'Completed';
-//       const totalScore = application.interviewData.reduce((acc, curr) => acc + (curr.score || 0), 0);
-//       application.finalScore = totalScore / application.interviewData.length;
-      
-//       await application.save();
-//       res.status(200).json({ success: true, isCompleted: true, message: "Interview Finished!" });
-//       return;
-//     }
+    //   answers: interview.answers.map((ans, index) => ({
+    //     questionNumber: index + 1,
+    //     question: ans.question,
+    //     answer: ans.transcript,
+    //     score: ans.score,
+    //     feedback: ans.feedback
+    //   }))
+    // };
 
-//     // Add next question to the sequence
-//     application.interviewData.push({ question: aiResult.nextQuestion });
-//     await application.save();
+    res.json(interview);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching interview result" });
+  }
+};
 
-//     res.status(200).json({
-//       success: true,
-//       nextQuestion: aiResult.nextQuestion,
-//       isCompleted: false
-//     });
-//   } catch (error) {
-//     console.error('❌ AI Submit Error:', error);
-//     res.status(500).json({ success: false, message: 'AI failed to evaluate answer' });
-//   }
-// };
-
-/**
- * @desc    Get the final results of an interview
- * @route   GET /api/interview/summary/:applicationId
- */
-// export const getInterviewSummary = async (req: Request, res: Response): Promise<void> => {
-//   try {
-//     const { applicationId } = req.params;
-
-//     const application = await Application.findById(applicationId).populate('jobId');
-
-//     if (!application) {
-//       res.status(404).json({ success: false, message: 'Application not found' });
-//       return;
-//     }
-
-//     res.status(200).json({
-//       success: true,
-//       data: {
-//         candidateName: application.candidateName,
-//         status: application.status,
-//         finalScore: application.finalScore,
-//         rounds: application.interviewData 
-//       }
-//     });
-//   } catch (error) {
-//     console.error('❌ Summary Error:', error);
-//     res.status(500).json({ success: false, message: 'Server error fetching summary' });
-//   }
-// };
