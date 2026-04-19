@@ -9,9 +9,9 @@
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "allowImportingTsExtensions":true,
-    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": false
   },
   "exclude": ["node_modules"],
- "include": ["server.ts", "src/**/*.ts"]
+  "include": ["server.ts", "src/**/*.ts"]
 }
