@@ -700,8 +700,7 @@ export default function Interview() {
 
   /* ─── derived ─── */
   const isRecording = phase === "user-recording";
-  // const isSpeaking = phase === "ai-speaking";
-  const isSpeaking = true
+  const isSpeaking = phase === "ai-speaking";
 
   return (
     <>

@@ -2,8 +2,7 @@ import { Loader2, Volume2 } from "lucide-react";
 import type { SessionPhase } from "../../utils/types";
 
 const aiWindow = ({ phase }: { phase: SessionPhase }) => {
-  // const isSpeaking = phase === "ai-speaking";
-  const isSpeaking = true;
+  const isSpeaking = phase === "ai-speaking";
   const isProcessing = phase === "processing" || phase === "connecting";
   return (
     <div className="relative flex items-center justify-center w-45 h-45">

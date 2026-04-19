@@ -1,15 +1,10 @@
 import { useRef, useEffect } from "react";
 import type { SessionPhase } from "../../utils/types";
-import { Mic, MicOff } from "lucide-react";
-import { Badge } from "../../components/ui/badge";
 
 function UserVideo({
   stream,
-  isMuted,
   cameraError,
   phase,
-  isSarvamListening,
-  sttStatus,
 }: {
   stream: MediaStream | null;
   isMuted: boolean;
