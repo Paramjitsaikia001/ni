@@ -1,4 +1,4 @@
-import { evaluateAnswer } from "../chain/evaluateAnswer.chain.ts";
+import { evaluateAnswer } from "../chain/evaluateAnswer.chain";
 
 function toQuestionText(q: unknown): string {
   if (typeof q === "string") return q;
@@ -30,9 +30,9 @@ export async function processTextAnswer(
  
   const nextQuestion = toQuestionText(interview.questions[interview.currentIndex]);
 
-  console.log("evaluation result in inveterview.services.ts", evaluation);
-  console.log("next question in inveterview.services.ts", nextQuestion);
-  console.log("transcript in inveterview.services.ts", transcript);
+  console.log("evaluation result in inveterview.services", evaluation);
+  console.log("next question in inveterview.services", nextQuestion);
+  console.log("transcript in inveterview.services", transcript);
 
   return {
     transcript,

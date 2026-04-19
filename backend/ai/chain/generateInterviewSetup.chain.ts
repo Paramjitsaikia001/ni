@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { genmodel } from "../config/gemini.config.ts";
+import { genmodel } from "../config/gemini.config";
 import { PromptTemplate } from "@langchain/core/prompts";
 
 export const combinedPrompt = new PromptTemplate({

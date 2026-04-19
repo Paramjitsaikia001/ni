@@ -1,5 +1,5 @@
-import { evaluateAnswerPrompt } from "../prompt/evaluateAnswer.prompt.ts";
-import { genmodel } from "../config/gemini.config.ts";
+import { evaluateAnswerPrompt } from "../prompt/evaluateAnswer.prompt";
+import { genmodel } from "../config/gemini.config";
 import { z } from "zod";
 
 const evaluationSchema = z.object({

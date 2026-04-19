@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { parseJobDescriptionPrompt } from "../prompt/parseJobDescription.prompt.ts";
-import { genmodel } from "../config/gemini.config.ts";
+import { parseJobDescriptionPrompt } from "../prompt/parseJobDescription.prompt";
+import { genmodel } from "../config/gemini.config";
 
 const jdSchema = z.object({
   jobTitle: z.string().nullable().describe("The title of the job"),

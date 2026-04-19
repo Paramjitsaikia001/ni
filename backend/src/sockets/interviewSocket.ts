@@ -3,7 +3,6 @@ import { Interview } from '../models/Interview';
 import { processTextAnswer } from '../../ai/services/interview.services';
 import { sarvamTTS } from '../../ai/chain/sarvamTTS.chain';
 import { speechToText } from '../../ai/chain/sarvamSTT.chain';
-import { SarvamAIClient } from 'sarvamai';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -25,10 +24,7 @@ const toQuestionText = (q: unknown): string => {
  */
 export const setupInterviewSocket = (io: Server) => {
   console.log("SARVAM KEY:", process.env.SARVAM_API_KEY);
-
-  const sarvamClient = new SarvamAIClient({
-    apiSubscriptionKey: process.env.SARVAM_API_KEY!,
-  });
+  let sarvamClient: any = null;
 
   const formatSarvamError = (err: any) => {
     if (!err) return "Unknown Sarvam error";
@@ -106,6 +102,13 @@ export const setupInterviewSocket = (io: Server) => {
 
         if (!process.env.SARVAM_API_KEY) {
           throw new Error("SARVAM_API_KEY is missing");
+        }
+
+        if (!sarvamClient) {
+          const SarvamAIClient = require("sarvamai").SarvamAIClient;
+          sarvamClient = new SarvamAIClient({
+            apiSubscriptionKey: process.env.SARVAM_API_KEY!,
+          });
         }
 
         socket.emit("stt_status", "connecting");

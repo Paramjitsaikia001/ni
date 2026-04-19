@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { genmodel } from "../config/gemini.config.ts";
-import { parseResumePrompt } from "../prompt/parseResume.prompt.ts";
+import { genmodel } from "../config/gemini.config";
+import { parseResumePrompt } from "../prompt/parseResume.prompt";
 
 const resumeSchema = z.object({
   name: z.string().nullable().describe("The candidate's full name"),

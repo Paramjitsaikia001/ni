@@ -1,5 +1,5 @@
-import { genmodel } from "../config/gemini.config.ts";
-import { generateQuestionsPrompt } from "../prompt/generateQuestions.prompt.ts";
+import { genmodel } from "../config/gemini.config";
+import { generateQuestionsPrompt } from "../prompt/generateQuestions.prompt";
 
 export async function generateInterviewQuestions(name: string, experience: number, resume: string, jobDescription: string) {
     const prompt=await generateQuestionsPrompt.format({
