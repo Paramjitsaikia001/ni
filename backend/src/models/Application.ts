@@ -6,6 +6,7 @@ const ApplicationSchema = new Schema({
   jobId: { type: Schema.Types.ObjectId, ref: 'Job', required: true },
   candidateDetails: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   resumeUrl: { type: String, required: true },
+  resumeText: { type: String, required: false },
   interviewData: { type: Schema.Types.ObjectId, ref: 'Interview',  },
   status: { 
     type: String, 

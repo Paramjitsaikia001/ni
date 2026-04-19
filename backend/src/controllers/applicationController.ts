@@ -2,19 +2,19 @@ import { Request, Response } from "express";
 import {Application} from "../models/Application";
 import Job from "../models/Job";
 import User from "../models/User";
-import { parseResume, cleanText } from "../services/parser";
-import path from "path";
+import { uploadResumeToCloudinary } from "../services/cloudinary";
+import { loadResumeFromBuffer } from "../../ai/loader/resume.loader";
 
 export const applyForJob = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { jobId, candidateID, yearsOfExperience } = req.body;
+    const { jobId, candidateID, resumeUrl } = req.body;
 
     const file =
       (req as any).file ??
       (((req as any).files as Express.Multer.File[] | undefined)?.[0] ?? null);
 
-    if (!file) {
-      res.status(400).json({ success: false, message: "No resume file uploaded" });
+    if (!resumeUrl && !file) {
+      res.status(400).json({ success: false, message: "Provide either resume file or resumeUrl" });
       return;
     }
 
@@ -40,14 +40,33 @@ export const applyForJob = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    let firstQuestion =
+    let persistedResumeUrl = "";
+    if (typeof resumeUrl === "string" && /^https?:\/\//i.test(resumeUrl.trim())) {
+      persistedResumeUrl = resumeUrl.trim();
+    } else if (file) {
+      persistedResumeUrl = await uploadResumeToCloudinary(file);
+    } else {
+      res.status(400).json({ success: false, message: "Invalid resumeUrl" });
+      return;
+    }
+
+    const firstQuestion =
       "Tell me about your background and why you applied for this role.";
 
+    let extractedResumeText = "";
+    if (file?.buffer?.length) {
+      try {
+        extractedResumeText = await loadResumeFromBuffer(file.buffer);
+      } catch (err) {
+        console.warn("Resume text extraction failed at apply-time; will retry at interview start.", err);
+      }
+    }
 
     const newApp = await Application.create({
       jobId,
       candidateDetails: candidate._id,
-      resumeUrl: file.path,
+      resumeUrl: persistedResumeUrl,
+      resumeText: extractedResumeText || undefined,
       status: "Applied",
     });
 

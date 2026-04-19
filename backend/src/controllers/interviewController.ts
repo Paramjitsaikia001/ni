@@ -58,8 +58,17 @@ export const startInterview = async (req: Request, res: Response): Promise<void>
 console.log("job des ",jobdetails.description);
 
 
-    // extract text directly from the resume PDF
-    const rawResumeText = await loadResume(application.resumeUrl as string);
+    // Prefer pre-extracted text to avoid remote URL auth/delivery failures.
+    let rawResumeText = (application as any).resumeText as string | undefined;
+    if (!rawResumeText || rawResumeText.trim().length === 0) {
+      rawResumeText = await loadResume(application.resumeUrl as string);
+      try {
+        (application as any).resumeText = rawResumeText;
+        await application.save();
+      } catch (persistErr) {
+        console.warn("Could not persist resumeText back to application", persistErr);
+      }
+    }
     if (!rawResumeText) {
       res.status(404).json({ success: false, message: 'Resume could not be read' });
       return;
@@ -151,4 +160,3 @@ export const getAllInterviewResult = async (req:Request, res:Response) => {
     res.status(500).json({ message: "Error fetching interview result" });
   }
 };
-
