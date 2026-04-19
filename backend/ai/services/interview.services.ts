@@ -27,7 +27,7 @@ export async function processTextAnswer(
 
   const evaluation = await evaluateAnswer(question, transcript);
 
-  interview.currentIndex += 1;
+ 
   const nextQuestion = toQuestionText(interview.questions[interview.currentIndex]);
 
   console.log("evaluation result in inveterview.services.ts", evaluation);

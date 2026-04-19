@@ -5,7 +5,15 @@ import mongoose  from 'mongoose';
 const InterviewSchema = new mongoose.Schema({
   applicationId: { type: mongoose.Types.ObjectId, ref: 'Application', required: true },
   questions: { type: [String], required: true },
-  answers: { type: [Object], required: true },
+ answers: [
+  {
+    question: String,
+    answer: String,
+    transcript: String,
+    score: Number,
+    feedback: String,
+  }
+],
   finalScores: { type: [Number], required: true },
   finalFeedbacks: { type: [String], required: true },
 }, { timestamps: true });

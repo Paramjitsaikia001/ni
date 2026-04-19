@@ -22,7 +22,12 @@ async function runTest() {
 
     console.log("Processing text answer...");
     try {
-        const result = await processTextAnswer(interviewState, transcript);
+        const currentQuestion = interviewDoc.questions[currentIndex];
+        const currentQuestionText =
+          typeof currentQuestion === "string"
+            ? currentQuestion
+            : (currentQuestion as any)?.text || String(currentQuestion || "");
+        const result = await processTextAnswer(currentQuestionText, interviewState, transcript);
         console.log("Evaluation Result:", result);
 
         const question = interviewDoc.questions[currentIndex];

@@ -120,12 +120,13 @@ export const setupInterviewSocket = (io: Server) => {
           return null;
         }
 
-        sarvamSocket = await sarvamClient.speechToTextStreaming.connect({
-          model: "saaras:v3",
+        const streamingConnectArgs: any = {
+          model: "saaras:v2.5",
           mode: "transcribe",
           "language-code": "en-IN",
           high_vad_sensitivity: "true"
-        });
+        };
+        sarvamSocket = await sarvamClient.speechToTextStreaming.connect(streamingConnectArgs);
 
         sarvamSocket.on("error", (err: any) => {
           console.error("Sarvam streaming error", formatSarvamError(err), err);
@@ -383,7 +384,7 @@ export const setupInterviewSocket = (io: Server) => {
             currentIndex
           };
 
-          const result = await processTextAnswer(currentQuestionText,interviewState, transcript);
+          const result = await processTextAnswer(currentQuestionText, interviewState, transcript);
 
           console.log(`\n==================== AI EVALUATION ====================`);
           console.log(`Question: ${currentQuestionText}`);
@@ -395,7 +396,8 @@ export const setupInterviewSocket = (io: Server) => {
           const question = interviewDoc.questions[currentIndex];
           interviewDoc.answers.push({
             question,
-            transcript: result.transcript,
+            answer: transcript,
+            transcript: transcript,
             score: result.score,
             feedback: result.feedback
           });
@@ -406,28 +408,58 @@ export const setupInterviewSocket = (io: Server) => {
 
           await interviewDoc.save();
 
-          const nextQuestionText = toQuestionText(result.nextQuestion);
+                    // 🔍 Debug: Log the latest saved interview result
+          console.log("\n🧾 Latest Interview Saved:");
+          console.log(JSON.stringify({
+            interviewId: interviewDoc._id,
+            totalQuestions: interviewDoc.questions.length,
+            totalAnswers: interviewDoc.answers.length,
+            answers: interviewDoc.answers.map((ans, i) => ({
+              qNo: i + 1,
+              question: ans.question,
+              answer: ans.transcript,
+              score: ans.score,
+              feedback: ans.feedback
+            })),
+            averageScore:
+              interviewDoc.finalScores.reduce((a, b) => a + b, 0) /
+              (interviewDoc.finalScores.length || 1)
+          }, null, 2));
+          console.log("=========================================\n");
 
+
+          const nextIndex = currentIndex + 1;
+          const nextQuestionText = toQuestionText(interviewDoc.questions[nextIndex]);
+
+          if (!nextQuestionText && !isCompleted) {
+            console.error("❌ Next question missing at index:", currentIndex + 1);
+          }
           if (!isCompleted && nextQuestionText) {
-            try {
-              // Combine feedback and next question so AI speaks both
-              const combinedText = `${result.feedback} ${nextQuestionText}`;
-              const nextAudioBuffer = await sarvamTTS(combinedText);
 
-              // Emit to the exact room the client joined
+            try {
+              // First speak feedback
+              const feedbackAudio = await sarvamTTS(result.feedback);
+
               io.to(roomKey).emit('ai_feedback', {
-                feedback: result.feedback
+                feedback: result.feedback,
+                audio: feedbackAudio.toString('base64')
               });
+
+
+              const delayMs = Math.max(2000, result.feedback.length * 40); // dynamic delay
+              await new Promise((res) => setTimeout(res, delayMs));
+
+              // Then speak question separately (prevents truncation)
+              const questionAudio = await sarvamTTS(nextQuestionText);
 
               io.to(roomKey).emit('ai_question', {
                 question: nextQuestionText,
-                audio: nextAudioBuffer.toString('base64')
+                audio: questionAudio.toString('base64')
               });
+
             } catch (err) {
               console.error("TTS Error:", err);
-              io.to(roomKey).emit('ai_feedback', {
-                feedback: result.feedback
-              });
+
               io.to(roomKey).emit('ai_question', {
                 question: nextQuestionText
               });
@@ -435,23 +467,49 @@ export const setupInterviewSocket = (io: Server) => {
           }
 
           if (isCompleted) {
-            const endText = `${result.feedback} Thank you for your time. The interview is now complete. You may end the call.`;
             try {
-              const endAudioBuffer = await sarvamTTS(endText);
+              // 🎯 Random ending messages
+              const endingMessages = [
+                "Thank you for your time. The interview is now complete. You may end the call.",
+                "That concludes the interview. Thank you for your responses.",
+                "We’ve reached the end of the interview. Thanks for participating.",
+                "Interview completed successfully. You can now end the session.",
+                "Thanks for answering all the questions. This interview is now finished."
+              ];
+
+              const randomEndMessage =
+                endingMessages[Math.floor(Math.random() * endingMessages.length)];
+
+              // 1. Speak feedback first
+              const feedbackAudio = await sarvamTTS(result.feedback);
+
               io.to(roomKey).emit('ai_feedback', {
-                feedback: result.feedback
+                feedback: result.feedback,
+                audio: feedbackAudio.toString('base64')
               });
+
+              // 2. Dynamic delay
+              const delayMs = Math.max(2000, result.feedback.length * 40);
+              await new Promise((res) => setTimeout(res, delayMs));
+
+              // 3. Speak random ending message
+              const endAudio = await sarvamTTS(randomEndMessage);
+
               io.to(roomKey).emit('ai_question', {
-                question: "Thank you for your time. The interview is now complete. You may end the call.",
-                audio: endAudioBuffer.toString('base64'),
+                question: randomEndMessage,
+                audio: endAudio.toString('base64'),
                 isEnd: true
               });
+
             } catch (err) {
+              console.error("TTS Error:", err);
+
               io.to(roomKey).emit('ai_feedback', {
                 feedback: result.feedback
               });
+
               io.to(roomKey).emit('ai_question', {
-                question: "Thank you for your time. The interview is now complete. You may end the call.",
+                question: "Interview completed. You may end the call.",
                 isEnd: true
               });
             }
@@ -463,8 +521,8 @@ export const setupInterviewSocket = (io: Server) => {
       }
     );
 
-    socket.on('disconnect', () => {
-      console.log(`Interview Socket Disconnected: ${socket.id}`);
+    socket.on('disconnect', (reason) => {
+      console.log(`Interview Socket Disconnected: ${socket.id}`, reason);
       closeSarvamSocket();
     });
   });

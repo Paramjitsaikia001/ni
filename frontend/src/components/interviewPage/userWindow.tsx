@@ -29,7 +29,7 @@ function UserVideo({
 
   return (
     <div
-      className="relative w-full aspect-4/3 rounded-2xl overflow-hidden border bg-card transition-all duration-300"
+      className="relative w-full aspect-4/3 rounded-2xl overflow-hidden  h-full border bg-card transition-all duration-300"
       style={{
         borderColor: isRecording
           ? "hsl(var(--gold)/0.5)"
@@ -105,7 +105,7 @@ function UserVideo({
             {isRecording ? "Listening…" : "You"}
           </span>
         </div>
-        <div className="flex items-center gap-1.5">
+        {/* <div className="flex items-center gap-1.5">
           {isRecording && (
             <Badge className="text-[9px] h-5 px-2 border-gold/30 bg-gold/15 text-gold">
               <Mic className="w-2.5 h-2.5 mr-1" /> Live
@@ -134,7 +134,7 @@ function UserVideo({
               <MicOff className="w-2.5 h-2.5 mr-1" /> Muted
             </Badge>
           )}
-        </div>
+        </div> */}
       </div>
     </div>
   );

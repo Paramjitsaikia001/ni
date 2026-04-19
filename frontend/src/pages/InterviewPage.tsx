@@ -8,18 +8,17 @@ import {
   PhoneOff,
   Volume2,
   VolumeX,
-  ChevronDown,
   AlertCircle,
+  Captions,
+  CaptionsOff,
 } from "lucide-react";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import Navbar from "../components/LandingPage/Navbar";
 import { io, Socket } from "socket.io-client";
 import { API_BASE } from "../lib/api";
 import type { SessionPhase, TranscriptLine, Speaker } from "../utils/types";
 import AIOrb from "../components/interviewPage/aiWindow";
 import UserVideo from "../components/interviewPage/userWindow";
-import Waveform from "../components/interviewPage/waveform";
 import TranscriptEntry from "../components/interviewPage/TranscriptEntry";
 
 // socket endpoint can be overridden via env, otherwise default to backend host
@@ -68,6 +67,89 @@ function phaseLabel(phase: SessionPhase): string {
   }
 }
 
+
+function Waveform({
+  active,
+  color = "hsl(var(--primary)/0.7)",
+  stream = null,
+}: {
+  active: boolean;
+  color?: string;
+  stream?: MediaStream | null;
+}) {
+  const [volume, setVolume] = useState(0);
+
+  useEffect(() => {
+    if (!active || !stream || stream.getAudioTracks().length === 0) {
+      setVolume(0);
+      return;
+    }
+
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+
+    const audioCtx = new AudioContext();
+    const analyser = audioCtx.createAnalyser();
+    const source = audioCtx.createMediaStreamSource(stream);
+    
+    source.connect(analyser);
+    analyser.fftSize = 256;
+    
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    
+    let animationId: number;
+    
+    const updateVolume = () => {
+      analyser.getByteFrequencyData(dataArray);
+      let sum = 0;
+      for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
+      const avg = sum / bufferLength;
+      
+      // Normalize roughly 0 to 1
+      setVolume(Math.min(1, avg / 60));
+      animationId = requestAnimationFrame(updateVolume);
+    };
+    
+    updateVolume();
+    
+    return () => {
+      cancelAnimationFrame(animationId);
+      source.disconnect();
+      audioCtx.close().catch(console.error);
+    };
+  }, [active, stream]);
+
+  return (
+    <div className="flex items-center gap-0.75 h-8">
+      {Array.from({ length: 28 }).map((_, i) => {
+        // When streaming microphone input, mix generic animation with the live volume magnitude
+        const baseHeight = active && !stream ? (8 + Math.random() * 22) : 4;
+        const reactiveHeight = stream && active ? 4 + (volume * (10 + Math.random() * 20)) : baseHeight;
+
+        return (
+          <span
+            key={i}
+            className="rounded-full"
+            style={{
+              width: "3px",
+              background: color,
+              // eslint-disable-next-line react-hooks/purity
+              height: `${reactiveHeight}px`,
+              transition: stream ? "height 0.05s ease" : "height 0.15s ease",
+              animation: (active && !stream)
+                ? `waveBar 0.5s ease-in-out ${(i % 7) * 0.07}s infinite alternate`
+                : "none",
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+
+
 export default function Interview() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -104,6 +186,7 @@ export default function Interview() {
   const [cameraError, setCameraError] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [speakerMuted, setSpeakerMuted] = useState(false);
+  const [isCaption, setIsCaption] = useState(false);
 
   /* session */
   const [phase, setPhase] = useState<SessionPhase>("connecting");
@@ -127,7 +210,10 @@ export default function Interview() {
   const recognitionRef = useRef<any>(null);
   const speakerMutedRef = useRef(false);
   const finalAnswerRef = useRef(""); // final STT transcript
-  const finalAudioRef = useRef<{ audioBase64: string; mimeType: string } | null>(null);
+  const finalAudioRef = useRef<{
+    audioBase64: string;
+    mimeType: string;
+  } | null>(null);
   const lastCommittedUserTextRef = useRef("");
   const socketRef = useRef<Socket | null>(null);
   const isSubmittingRef = useRef(false); // to prevent multiple submits
@@ -148,10 +234,15 @@ export default function Interview() {
     maxRecordingMs: MANUAL_SUBMIT_MODE ? 120000 : 30000,
     onFinalAudio: (audioBase64: string, mimeType: string) => {
       finalAudioRef.current = { audioBase64, mimeType };
-      trackVoiceEvent("final_audio_captured", `bytes≈${Math.floor(audioBase64.length * 0.75)}`);
+      trackVoiceEvent(
+        "final_audio_captured",
+        `bytes≈${Math.floor(audioBase64.length * 0.75)}`,
+      );
     },
     onMicNoSignal: () => {
-      setError("Microphone signal not detected. Check browser mic input device and OS mic permissions.");
+      setError(
+        "Microphone signal not detected. Check browser mic input device and OS mic permissions.",
+      );
       trackVoiceEvent("mic_no_signal");
     },
     onAudioLevel: (rms: number) => {
@@ -265,66 +356,86 @@ export default function Interview() {
   }, [startSarvam, trackVoiceEvent]);
 
   //  SUBMIT user's answer
-  const submitAnswer = useCallback(async (answerOverride?: string, options?: { skipStop?: boolean }) => {
-    if (isSubmittingRef.current) return;
-    isSubmittingRef.current = true;
-    isRecordingRef.current = false;
-    trackVoiceEvent("recording_stopped");
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    if (!options?.skipStop) {
-      stopSarvam({ emitFinal: true });
-      await new Promise((r) => setTimeout(r, 300));
-    }
+  const submitAnswer = useCallback(
+    async (answerOverride?: string, options?: { skipStop?: boolean }) => {
+      if (isSubmittingRef.current) return;
+      isSubmittingRef.current = true;
+      isRecordingRef.current = false;
+      trackVoiceEvent("recording_stopped");
+      recognitionRef.current?.stop();
+      recognitionRef.current = null;
+      if (!options?.skipStop) {
+        stopSarvam({ emitFinal: true });
+        await new Promise((r) => setTimeout(r, 300));
+      }
 
-    const answer = (answerOverride || finalAnswerRef.current || liveAnswer).trim();
-    const hasFinalAudio = !!finalAudioRef.current?.audioBase64;
-    const finalAudioBytes = finalAudioRef.current?.audioBase64
-      ? Math.floor(finalAudioRef.current.audioBase64.length * 0.75)
-      : 0;
+      const answer = (
+        answerOverride ||
+        finalAnswerRef.current ||
+        liveAnswer
+      ).trim();
+      const hasFinalAudio = !!finalAudioRef.current?.audioBase64;
+      const finalAudioBytes = finalAudioRef.current?.audioBase64
+        ? Math.floor(finalAudioRef.current.audioBase64.length * 0.75)
+        : 0;
 
-    if (hasFinalAudio && finalAudioBytes < 2500) {
-      setError("Captured audio is too short/quiet. Please speak a bit longer and try again.");
-      trackVoiceEvent("submit_blocked_small_audio", `bytes=${finalAudioBytes}`);
+      if (hasFinalAudio && finalAudioBytes < 2500) {
+        setError(
+          "Captured audio is too short/quiet. Please speak a bit longer and try again.",
+        );
+        trackVoiceEvent(
+          "submit_blocked_small_audio",
+          `bytes=${finalAudioBytes}`,
+        );
+        autoSubmitPendingRef.current = false;
+        isSubmittingRef.current = false;
+        setPhase("user-recording");
+        startSarvam();
+        return;
+      }
+
+      if (!answer && !hasFinalAudio) {
+        setError("No transcript available to submit.");
+        trackVoiceEvent("submit_skipped", "no transcript available");
+        autoSubmitPendingRef.current = false;
+        isSubmittingRef.current = false;
+        return;
+      }
+
+      setLiveAnswer("");
       autoSubmitPendingRef.current = false;
-      isSubmittingRef.current = false;
-      setPhase("user-recording");
-      startSarvam();
-      return;
-    }
+      if (answer) {
+        addLine("User", answer);
+        lastCommittedUserTextRef.current = answer;
+      }
+      setPhase("processing");
 
-    if (!answer && !hasFinalAudio) {
-      setError("No transcript available to submit.");
-      trackVoiceEvent("submit_skipped", "no transcript available");
-      autoSubmitPendingRef.current = false;
-      isSubmittingRef.current = false;
-      return;
-    }
-
-    setLiveAnswer("");
-    autoSubmitPendingRef.current = false;
-    if (answer) {
-      addLine("User", answer);
-      lastCommittedUserTextRef.current = answer;
-    }
-    setPhase("processing");
-
-    try {
-      trackVoiceEvent("answer_submitted", `chars=${answer.length}`);
-      socketRef.current?.emit("send_answer", {
-        interviewId: interviewId ?? id,
-        answer: answer || undefined,
-        audioBase64: finalAudioRef.current?.audioBase64,
-        mimeType: finalAudioRef.current?.mimeType,
-      });
-      finalAudioRef.current = null;
-    } catch {
-      setError("Failed to submit answer. Please check your connection.");
-      trackVoiceEvent("submit_error");
-      setPhase("user-recording");
-      isSubmittingRef.current = false;
-    }
-  }, [id, interviewId, liveAnswer, addLine, stopSarvam, trackVoiceEvent, startSarvam]);
+      try {
+        trackVoiceEvent("answer_submitted", `chars=${answer.length}`);
+        socketRef.current?.emit("send_answer", {
+          interviewId: interviewId ?? id,
+          answer: answer || undefined,
+          audioBase64: finalAudioRef.current?.audioBase64,
+          mimeType: finalAudioRef.current?.mimeType,
+        });
+        finalAudioRef.current = null;
+      } catch {
+        setError("Failed to submit answer. Please check your connection.");
+        trackVoiceEvent("submit_error");
+        setPhase("user-recording");
+        isSubmittingRef.current = false;
+      }
+    },
+    [
+      id,
+      interviewId,
+      liveAnswer,
+      addLine,
+      stopSarvam,
+      trackVoiceEvent,
+      startSarvam,
+    ],
+  );
 
   useEffect(() => {
     submitAnswerRef.current = submitAnswer;
@@ -405,9 +516,26 @@ export default function Interview() {
       },
     );
 
-    socket.on("ai_feedback", (payload: { feedback: string }) => {
-      if (!payload?.feedback) return;
-      addLine("AI", payload.feedback);
+    socket.on(
+      "ai_feedback",
+      (payload: { feedback: string; audio?: string }) => {
+        if (!payload?.feedback) return;
+
+        addLine("AI", payload.feedback);
+        setPhase("ai-speaking");
+
+        if (payload.audio) {
+          playAudioBase64(payload.audio, () => {});
+        } else {
+          speak(payload.feedback, () => {});
+        }
+      },
+    );
+
+    socket.on("ai_audio", (payload: { audio: string }) => {
+      if (!payload?.audio) return;
+
+      playAudioBase64(payload.audio, () => {});
     });
 
     socket.on("partial_transcript", (data: { text: string }) => {
@@ -572,7 +700,8 @@ export default function Interview() {
 
   /* ─── derived ─── */
   const isRecording = phase === "user-recording";
-  const isSpeaking = phase === "ai-speaking";
+  // const isSpeaking = phase === "ai-speaking";
+  const isSpeaking = true
 
   return (
     <>
@@ -589,11 +718,11 @@ export default function Interview() {
         </div>
       )}
 
-      <div className="min-h-screen bg-background flex flex-col">
-        <Navbar isLoggedIn={true} />
+      <div className="h-screen bg-background flex flex-col">
+        {/* <Navbar isLoggedIn={true} /> */}
 
-        <main className="flex-1 pt-20 pb-6 px-4">
-          <div className="max-w-6xl mx-auto h-full">
+        <main className="min-w-full h-screen  pt-6 pb-6 ">
+          <div className="  h-full  max-w-7xl mx-auto flex flex-col">
             {/* Top bar */}
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
@@ -604,29 +733,34 @@ export default function Interview() {
                   <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
                   Recording
                 </span>
-                <Badge
+
+{/* application badge  */}
+
+                {/* <Badge
                   variant="outline"
                   className="text-[10px] border-primary/30 text-primary"
                 >
                   Application #{id}
-                </Badge>
+                </Badge> */}
               </div>
             </div>
 
             {/* Main grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-5 h-[calc(100vh-200px)] min-h-130">
-              {/* ── Left: AI Panel ── */}
-              <div className="flex flex-col gap-4 min-h-0">
+            <div
+              className={`grid grid-cols-1  ${isCaption ? "lg:grid-cols-3" : " lg:grid-cols-2"} w-full h-[70vh] gap-5 `}
+            >
+              {/*  AI Panel ── */}
+              <div className="flex flex-col w-full  h-full gap-4 transition-transform duration-500">
                 {/* AI orb */}
                 <div
-                  className="rounded-2xl border border-border bg-card p-6 flex items-center gap-6"
+                  className="rounded-2xl h-full w-full  border border-border bg-card p-6 flex flex-col justify-center items-center gap-6"
                   style={{
                     background:
                       "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--primary)/0.04) 100%)",
                   }}
                 >
                   <AIOrb phase={phase} />
-                  <div className="flex-1 min-w-0">
+                  <div className="flex flex-col items-center text-center max-w-[400px]">
                     <div className="flex items-center gap-2 mb-1">
                       <h2 className="font-body text-lg font-semibold text-secondary-foreground">
                         Apex AI
@@ -650,9 +784,9 @@ export default function Interview() {
                         ? (transcript.findLast?.((t) => t.speaker === "AI")
                             ?.text ?? "Preparing question…")
                         : isRecording
-                          ? (MANUAL_SUBMIT_MODE
-                              ? "Speak your answer, then click Done Speaking."
-                              : "Speak your answer clearly. We auto-submit after silence.")
+                          ? MANUAL_SUBMIT_MODE
+                            ? "Speak your answer, then click Done Speaking."
+                            : "Speak your answer clearly. We auto-submit after silence."
                           : phase === "processing"
                             ? "Submitting your answer…"
                             : phase === "connecting"
@@ -669,64 +803,10 @@ export default function Interview() {
                     />
                   </div>
                 </div>
-
-                {/* Transcript */}
-                <div className="flex-1 min-h-0 rounded-2xl border border-border bg-card flex flex-col overflow-hidden">
-                  <div className="px-5 py-3.5 border-b border-border flex items-center justify-between shrink-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[10px] tracking-widest uppercase text-primary">
-                        Transcript
-                      </span>
-                    </div>
-                    <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-                  </div>
-
-                  <div
-                    ref={transcriptRef}
-                    className="flex-1 overflow-y-auto px-5 py-4 space-y-4 scrollbar-thin scrollbar-thumb-border"
-                  >
-                    {transcript.length === 0 ? (
-                      <div className="flex items-center justify-center h-full">
-                        <p className="text-xs text-muted-foreground font-mono">
-                          Starting session…
-                        </p>
-                      </div>
-                    ) : (
-                      transcript.map((entry, i) => (
-                        <div key={i} className="transcript-entry">
-                          <TranscriptEntry
-                            {...entry}
-                            isLatest={
-                              i === transcript.length - 1 && !liveAnswer
-                            }
-                          />
-                        </div>
-                      ))
-                    )}
-
-                    {/* Live interim answer while user is speaking */}
-                    {isRecording && liveAnswer && (
-                      <div className="transcript-entry flex gap-3 flex-row-reverse opacity-70">
-                        <div className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-[9px] font-mono font-bold mt-0.5 bg-gold/20 text-gold border border-gold/30">
-                          ME
-                        </div>
-                        <div className="max-w-[82%] items-end flex flex-col gap-1">
-                          <div className="px-4 py-2.5 rounded-2xl rounded-tr-sm text-sm leading-relaxed bg-primary/10 text-secondary-foreground border border-primary/10 border-dashed">
-                            {liveAnswer}
-                            <span className="inline-block w-1.5 h-4 bg-gold/60 ml-1 rounded-sm animate-[blink_1s_step-end_infinite] align-middle" />
-                          </div>
-                          <span className="text-[10px] text-muted-foreground font-mono px-1">
-                            live
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
               </div>
 
-              {/* ── Right: User Panel ── */}
-              <div className="flex flex-col gap-4">
+              {/* User Panel ── */}
+              <div className="flex flex-col h-full gap-4 transition-transform duration-500">
                 <UserVideo
                   stream={stream}
                   isMuted={isMuted}
@@ -736,7 +816,7 @@ export default function Interview() {
                   sttStatus={sttStatus}
                 />
 
-                <div className="rounded-2xl border border-border bg-card p-4">
+                <div className="rounded-2xl hidden border border-border bg-card p-4">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-xs font-mono tracking-widest uppercase text-primary">
                       Voice Tracker
@@ -759,13 +839,17 @@ export default function Interview() {
                       </span>
                     </div>
                     <div className="rounded-md bg-secondary/50 px-2 py-1.5">
-                      Partial: <span className="font-semibold">{partialCount}</span>
+                      Partial:{" "}
+                      <span className="font-semibold">{partialCount}</span>
                     </div>
                     <div className="rounded-md bg-secondary/50 px-2 py-1.5">
                       Final: <span className="font-semibold">{finalCount}</span>
                     </div>
                     <div className="rounded-md bg-secondary/50 px-2 py-1.5 col-span-2">
-                      Mic RMS: <span className="font-semibold">{micLevel.toFixed(6)}</span>
+                      Mic RMS:{" "}
+                      <span className="font-semibold">
+                        {micLevel.toFixed(6)}
+                      </span>
                     </div>
                   </div>
                   <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 mb-2">
@@ -789,78 +873,147 @@ export default function Interview() {
                     )}
                   </div>
                 </div>
+              </div>
 
-                {/* Controls */}
+              {/* Transcript */}
+              <div
+                className={`flex-1 ${isCaption ? "bg-muted" : "hidden"} min-h-0 rounded-2xl border border-border bg-card flex flex-col overflow-hidden transition-transform duration-500`}
+              >
+                <div className="px-5 py-3.5 border-b border-border flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] tracking-widest uppercase text-primary">
+                      Transcript
+                    </span>
+                  </div>
+                </div>
+
                 <div
-                  className="rounded-2xl border border-border bg-card p-4 flex items-center justify-center gap-3"
-                  style={{
-                    background:
-                      "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--gold)/0.02) 100%)",
-                  }}
+                  ref={transcriptRef}
+                  className="flex-1 overflow-y-auto px-5 py-4 space-y-4 scrollbar-thin scrollbar-thumb-border"
                 >
-                  {/* Mute mic */}
-                  <button
-                    onClick={() => setIsMuted((m) => !m)}
-                    disabled={!isRecording}
-                    className={`w-11 h-11 rounded-full flex items-center justify-center border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed ${
-                      isMuted
-                        ? "bg-destructive/20 border-destructive/40 text-destructive hover:bg-destructive/30"
-                        : "bg-secondary border-border text-muted-foreground hover:text-foreground hover:border-primary/30"
-                    }`}
-                    title={isMuted ? "Unmute microphone" : "Mute microphone"}
-                  >
-                    {isMuted ? (
-                      <MicOff className="w-4 h-4" />
-                    ) : (
-                      <Mic className="w-4 h-4" />
-                    )}
-                  </button>
-
-                  {/* Context button */}
-                  {isRecording && (
-                    <button
-                      onClick={() => submitAnswerRef.current()}
-                      disabled={isSubmittingRef.current}
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      Done Speaking
-                    </button>
+                  {transcript.length === 0 ? (
+                    <div className="flex items-center justify-center h-full">
+                        
+                    </div>
+                  ) : (
+                    transcript.map((entry, i) => (
+                      <div key={i} className="transcript-entry">
+                        <TranscriptEntry
+                          {...entry}
+                          isLatest={i === transcript.length - 1 && !liveAnswer}
+                        />
+                      </div>
+                    ))
                   )}
 
-                  <button
-                    onClick={() => setShowEndConfirm(true)}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 transition-all duration-200 shadow-[0_4px_20px_hsl(var(--destructive)/0.3)] hover:shadow-[0_6px_28px_hsl(var(--destructive)/0.45)] hover:-translate-y-0.5"
-                  >
-                    <PhoneOff className="w-4 h-4" />
-                    End Interview
-                  </button>
-
-                  {/* Speaker mute */}
-                  <button
-                    onClick={() => setSpeakerMuted((m) => !m)}
-                    className={`w-11 h-11 rounded-full flex items-center justify-center border transition-all duration-200 ${
-                      speakerMuted
-                        ? "bg-destructive/20 border-destructive/40 text-destructive hover:bg-destructive/30"
-                        : "bg-secondary border-border text-muted-foreground hover:text-foreground hover:border-primary/30"
-                    }`}
-                    title={speakerMuted ? "Unmute speaker" : "Mute speaker"}
-                  >
-                    {speakerMuted ? (
-                      <VolumeX className="w-4 h-4" />
-                    ) : (
-                      <Volume2 className="w-4 h-4" />
-                    )}
-                  </button>
+                  {/* Live interim answer while user is speaking */}
+                  {isRecording && liveAnswer && (
+                    <div className="transcript-entry flex gap-3 flex-row-reverse opacity-70">
+                      <div className="w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-[9px] font-mono font-bold mt-0.5 bg-gold/20 text-gold border border-gold/30">
+                        ME
+                      </div>
+                      <div className="max-w-[82%] items-end flex flex-col gap-1">
+                        <div className="px-4 py-2.5 rounded-2xl rounded-tr-sm text-sm leading-relaxed bg-primary/10 text-secondary-foreground border border-primary/10 border-dashed">
+                          {liveAnswer}
+                          <span className="inline-block w-1.5 h-4 bg-gold/60 ml-1 rounded-sm animate-[blink_1s_step-end_infinite] align-middle" />
+                        </div>
+                        <span className="text-[10px] text-muted-foreground font-mono px-1">
+                          live
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
+
+
             </div>
           </div>
         </main>
-      </div>
+        {/* Controls */}
+        <div
+          className="rounded-2xl border border-border bg-card p-4 flex items-center justify-center gap-3"
+          style={{
+            background:
+              "linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--gold)/0.02) 100%)",
+          }}
+        >
+          {/* transctiption show  */}
+          <button
+            onClick={() => setIsCaption((m) => !m)}
+            className={`w-11 h-11 rounded-full flex items-center justify-center border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed ${
+              isMuted
+                ? "bg-destructive/20 border-destructive/40 text-destructive hover:bg-destructive/30"
+                : "bg-secondary border-border text-muted-foreground hover:text-foreground hover:border-primary/30"
+            }`}
+            title={isCaption ? "Unmute microphone" : "Mute microphone"}
+          >
+            {isCaption ? (
+              <CaptionsOff className="w-4 h-4" />
+            ) : (
+              <Captions className="w-4 h-4" />
+            )}
+          </button>
 
+          {/* Mute mic */}
+          <button
+            onClick={() => setIsMuted((m) => !m)}
+            disabled={!isRecording}
+            className={`w-11 h-11 rounded-full flex items-center justify-center border transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed ${
+              isMuted
+                ? "bg-destructive/20 border-destructive/40 text-destructive hover:bg-destructive/30"
+                : "bg-secondary border-border text-muted-foreground hover:text-foreground hover:border-primary/30"
+            }`}
+            title={isMuted ? "Unmute microphone" : "Mute microphone"}
+          >
+            {isMuted ? (
+              <MicOff className="w-4 h-4" />
+            ) : (
+              <Mic className="w-4 h-4" />
+            )}
+          </button>
+
+          {/* Context button */}
+          {isRecording && (
+            <button
+              onClick={() => submitAnswerRef.current()}
+              disabled={isSubmittingRef.current}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              Done Speaking
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowEndConfirm(true)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-destructive text-destructive-foreground text-sm font-medium hover:bg-destructive/90 transition-all duration-200 shadow-[0_4px_20px_hsl(var(--destructive)/0.3)] hover:shadow-[0_6px_28px_hsl(var(--destructive)/0.45)] hover:-translate-y-0.5"
+          >
+            <PhoneOff className="w-4 h-4" />
+            End Interview
+          </button>
+
+          {/* Speaker mute */}
+          <button
+            onClick={() => setSpeakerMuted((m) => !m)}
+            className={`w-11 h-11 rounded-full flex items-center justify-center border transition-all duration-200 ${
+              speakerMuted
+                ? "bg-destructive/20 border-destructive/40 text-destructive hover:bg-destructive/30"
+                : "bg-secondary border-border text-muted-foreground hover:text-foreground hover:border-primary/30"
+            }`}
+            title={speakerMuted ? "Unmute speaker" : "Mute speaker"}
+          >
+            {speakerMuted ? (
+              <VolumeX className="w-4 h-4" />
+            ) : (
+              <Volume2 className="w-4 h-4" />
+            )}
+          </button>
+        </div>
+
+      </div>
       {/* End confirm modal */}
       {showEndConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+        <div className="fixed inset-0  z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
           <div
             className="rounded-2xl border border-border bg-card p-8 max-w-sm w-full mx-4 shadow-[0_32px_64px_hsl(var(--background)/0.8)]"
             style={{ animation: "fadeSlideUp 0.25s ease both" }}

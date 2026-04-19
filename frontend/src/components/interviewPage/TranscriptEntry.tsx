@@ -8,8 +8,9 @@ function TranscriptEntry({
   isLatest,
 }: TranscriptLine & { isLatest: boolean }) {
   const isAI = speaker === "AI";
+
   return (
-    <div className={`flex gap-3 ${isAI ? "" : "flex-row-reverse"}`}>
+    <div className={` flex gap-3 ${isAI ? "" : "flex-row-reverse"}`}>
       <div
         className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-[9px] font-mono font-bold mt-0.5 ${
           isAI

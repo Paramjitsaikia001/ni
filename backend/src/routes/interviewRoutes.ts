@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { 
+  getAllInterviewResult,
   startInterview,
 } from '../controllers/interviewController';
 
@@ -11,5 +12,6 @@ const router: Router = Router();
  * @access  Public (Candidate)
  */
 router.post('/start', startInterview);
+router.get("/", getAllInterviewResult);
 
 export default router;
