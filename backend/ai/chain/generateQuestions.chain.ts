@@ -9,7 +9,7 @@ export async function generateInterviewQuestions(name: string, experience: numbe
         jobDescription
     })
     const response = await genmodel.invoke(prompt);
-    console.log("raw questions",response.content);
+    // console.log("raw questions",response.content);
     
    
     try {

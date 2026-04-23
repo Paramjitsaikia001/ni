@@ -55,7 +55,7 @@ export const startInterview = async (req: Request, res: Response): Promise<void>
       res.status(404).json({ success: false, message: 'Job details  description not found' });
       return;
     }
-console.log("job des ",jobdetails.description);
+// console.log("job des ",jobdetails.description);
 
 
     // Prefer pre-extracted text to avoid remote URL auth/delivery failures.

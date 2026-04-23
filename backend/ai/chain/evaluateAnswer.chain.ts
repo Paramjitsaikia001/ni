@@ -131,7 +131,7 @@ export async function evaluateAnswer(question: string, answer: string) {
     answer
   });
 
-  console.log("Prompt sent to LLM:\n", prompt);
+  // console.log("Prompt sent to LLM:\n", prompt);
 
   const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 

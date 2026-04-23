@@ -24,7 +24,6 @@ const toQuestionText = (q: unknown): string => {
  * This follows the LLM -> TTS -> User -> STT -> LLM flow.
  */
 export const setupInterviewSocket = (io: Server) => {
-  console.log("SARVAM KEY:", process.env.SARVAM_API_KEY);
 
   const sarvamClient = new SarvamAIClient({
     apiSubscriptionKey: process.env.SARVAM_API_KEY!,

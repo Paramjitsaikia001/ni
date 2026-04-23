@@ -32,7 +32,7 @@ export async function sarvamTTS(text: string): Promise<Buffer> {
         // failed to parse json, fall through to error
     }
     console.error("Sarvam TTS error:", response.status, textBody);
-    console.log("Sarvam key:", process.env.SARVAM_API_KEY);
+    // console.log("Sarvam key:", process.env.SARVAM_API_KEY);
     throw new Error("Sarvam TTS failed; check SARVAM_API_KEY and request payload");
   }
 
